@@ -139,7 +139,7 @@ export function interpret(src: string): Timeline {
 
   const track = (base: number[]): Track => ({ base, segs: [] });
 
-  function makeObj(kind: ObjKind, p: Parsed, stmt: Extract<Stmt, { kind: "cmd" }>, start: number, origin: [number, number], box: TObj["box"], data: Record<string, any>): TObj {
+  function makeObj(kind: ObjKind, p: Parsed, stmt: Extract<Stmt, { kind: "cmd" }>, start: number, origin: [number, number], box: TObj["box"], data: any): TObj {
     if (objs.size >= MAX_OBJECTS) err("Too many objects", { tok: stmt.nameTok });
     const asG = kw1(p, "as");
     let id: string;

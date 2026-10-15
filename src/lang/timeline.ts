@@ -37,7 +37,7 @@ export interface TObj {
   opacity: Track;
   /** 0..1 build progress for the creation "over" */
   progress: Track;
-  data: Record<string, any>;
+  data: any;
   lines: number[];
   createLine: number;
   createLineEnd: number; // offset where appended keywords go
