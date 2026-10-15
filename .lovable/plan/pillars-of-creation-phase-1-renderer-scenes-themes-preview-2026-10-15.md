@@ -1,8 +1,11 @@
+&nbsp;
+
 # Pillars of Creation — Phase 1: Renderer, Scenes, Themes, Preview
 
 Scope for this step only: the canvas renderer, the six scene types, the theme system and a preview page that plays a sample script. The editor, AI generation, export and Cloud features wait for your go-ahead.
 
 ## What you will see
+
 - A dark preview page at `/` with a 16:9 canvas that draws internally at 1920x1080 and scales down to fit the screen.
 - Play/pause, a timeline you can drag, the current time and total length, plus markers showing where each scene starts.
 - A theme switcher with three presets: Dark Documentary, Clean News, Bold Pop.
@@ -10,6 +13,7 @@ Scope for this step only: the canvas renderer, the six scene types, the theme sy
 - Sample photos generated for the photo and headline scenes.
 
 ## Scene types
+
 1. PhotoZoom: slow zoom and pan between a start frame and an end frame, an optional caption bar that slides in, and an optional vignette.
 2. StatCounter: a number that counts up with easing (with prefix/suffix, unit and decimals), a label, a source line, and a badge if the figure is unverified.
 3. BarChart: a title, then bars that grow one after another, with labels and values counting up, and a source line.
@@ -18,12 +22,15 @@ Scope for this step only: the canvas renderer, the six scene types, the theme sy
 6. KineticText: words that appear on a beat with scale and fade, emphasis words in the accent color, and automatic line wrapping.
 
 ## Theme system
+
 Each theme has: a display font and a body font (Google Fonts), a background color, a text color, an accent color, a set of easing curves, and film grain strength. Planned fonts:
+
 - Dark Documentary: Anton + Inter Tight
 - Clean News: Playfair Display + Source Sans 3
 - Bold Pop: Archivo Black + DM Sans
 
 ## Technical details
+
 - `src/render/` holds no React code:
   - `types.ts`: Project, Scene union and Theme types.
   - `schema.ts`: zod schema plus a function that turns validation problems into readable path-based messages.
