@@ -13,3 +13,4 @@
 - All video drawing lives in `src/render/` (no React); one file per scene type in `src/render/scenes/`. Why: preview and export must share identical render code.
 - Every scene is a pure function of time `t`; never use CSS/timer animation for video content. Why: export steps frames deterministically.
 - Scripts are validated with the zod schema in `src/render/schema.ts`; types derive from it. Why: single source of truth for script format.
+- `noUncheckedIndexedAccess` is off. Why: render code indexes arrays heavily with bounds already guaranteed by loops/timeline math.
