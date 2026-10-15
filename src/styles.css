@@ -28,6 +28,15 @@
   --radius-4xl: calc(var(--radius) + 16px);
   --font-display: "Anton", sans-serif;
   --font-sans: "Inter Tight", system-ui, sans-serif;
+  --color-editor: var(--editor);
+  --color-syn-cmd: var(--syn-cmd);
+  --color-syn-kw: var(--syn-kw);
+  --color-syn-num: var(--syn-num);
+  --color-syn-str: var(--syn-str);
+  --color-syn-asset: var(--syn-asset);
+  --color-syn-url: var(--syn-url);
+  --color-syn-comment: var(--syn-comment);
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -65,6 +74,14 @@
 
 :root {
   --radius: 0.5rem;
+  --editor: oklch(0.135 0.004 270);
+  --syn-cmd: oklch(0.8 0.15 80);
+  --syn-kw: oklch(0.72 0.1 230);
+  --syn-num: oklch(0.78 0.14 150);
+  --syn-str: oklch(0.78 0.11 40);
+  --syn-asset: oklch(0.75 0.14 320);
+  --syn-url: oklch(0.65 0.05 230);
+  --syn-comment: oklch(0.5 0.01 270);
   --background: oklch(0.16 0.004 270);
   --foreground: oklch(0.94 0.008 80);
   --card: oklch(0.2 0.005 270);
