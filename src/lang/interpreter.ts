@@ -114,7 +114,7 @@ export function interpret(src: string): Timeline {
   }
 
   function split(name: string, args: Arg[]): Parsed {
-    const spec = { ...KW._common, ...(KW[name] ?? {}) };
+    const spec = { ...KW["_common"], ...(KW[name] ?? {}) };
     const out: Parsed = { pos: [], kw: {} };
     for (let i = 0; i < args.length; i++) {
       const a = args[i];
@@ -311,7 +311,7 @@ export function interpret(src: string): Timeline {
         const headline = str(src(0), "a headline", near);
         const body = kw1(p, "body") ? str(kw1(p, "body")![1], "body text", near) : "";
         const paper = kw1(p, "paper") ? str(kw1(p, "paper")![1], "paper name", near) : "";
-        const marks = (p.kw.mark ?? []).map((g) => str(g[1], "a phrase", g[0]));
+        const marks = (p.kw["mark"] ?? []).map((g) => str(g[1], "a phrase", g[0]));
         makeObj("headline", p, s, start, [W / 2, H / 2], [300, 150, 1320, 780], { headline, body, paper, marks });
         return;
       }

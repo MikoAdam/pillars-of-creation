@@ -24,7 +24,7 @@ export type Stmt =
   | (StmtBase & { kind: "cmd"; name: string; nameTok: Tok; args: Arg[] })
   | (StmtBase & { kind: "let"; name: string; expr: Expr })
   | (StmtBase & { kind: "repeat"; count: Expr; body: Stmt[]; endLine: number })
-  | (StmtBase & { kind: "for"; v: string; from: Expr; to: Expr; step?: Expr; body: Stmt[]; endLine: number });
+  | (StmtBase & { kind: "for"; v: string; from: Expr; to: Expr; step?: Expr | undefined; body: Stmt[]; endLine: number });
 
 class TokStream {
   i = 0;

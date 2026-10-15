@@ -11,7 +11,7 @@ export interface Seg {
   col: number;
   /** literal spans of the target values (undefined entries = non-literal) */
   toSpans: (Span | undefined)[];
-  overSpan?: Span;
+  overSpan?: Span | undefined;
   label: string;
 }
 
@@ -41,9 +41,9 @@ export interface TObj {
   lines: number[];
   createLine: number;
   createLineEnd: number; // offset where appended keywords go
-  createSpans: { at?: (Span | undefined)[]; scale?: Span; from?: (Span | undefined)[]; to?: (Span | undefined)[] };
-  enter?: Trans;
-  exit?: Trans;
+  createSpans: { at?: (Span | undefined)[] | undefined; scale?: Span | undefined; from?: (Span | undefined)[] | undefined; to?: (Span | undefined)[] | undefined };
+  enter?: Trans | undefined;
+  exit?: Trans | undefined;
   /** local bounding box before transform [x, y, w, h] */
   box: [number, number, number, number];
 }
@@ -58,8 +58,8 @@ export interface StmtInfo {
 export interface Timeline {
   title: string;
   themeId: string;
-  themeSpan?: Span;
-  projectLine?: number;
+  themeSpan?: Span | undefined;
+  projectLine?: number | undefined;
   duration: number;
   objects: TObj[];
   stmts: StmtInfo[];
