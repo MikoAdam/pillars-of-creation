@@ -1,0 +1,433 @@
+import { LangError } from "./lexer";
+import { parse, type Arg, type Expr, type Span, type Stmt } from "./parser";
+import { addSeg, sample, type ObjKind, type Seg, type TObj, type Timeline, type Track, type Trans } from "./timeline";
+
+export const THEME_NAMES: Record<string, string> = {
+  dark_documentary: "dark-doc",
+  clean_news: "clean-news",
+  bold_pop: "bold-pop",
+};
+
+export const COMMANDS = [
+  "project", "show", "zoom", "scale", "move", "fade", "caption", "source", "unverified", "wait",
+  "cut", "crossfade", "slide", "count", "bars", "line", "headline", "say", "arrow", "circle", "box",
+  "highlight", "let", "repeat", "for", "end",
+];
+
+export type RunResult =
+  | { ok: true; timeline: Timeline }
+  | { ok: false; error: { message: string; line: number; col: number; len: number } };
+
+interface NumV { v: number; span?: Span }
+
+const MAX_ITER = 5000;
+const MAX_OBJECTS = 2000;
+const W = 1920, H = 1080;
+
+/** Per-command keyword arity. Words not listed are positional. */
+const KW: Record<string, Record<string, number>> = {
+  _common: { over: 1, as: 1, delay: 1, scale: 1 },
+  show: { at: 2, vignette: 1 },
+  count: { unit: 1, prefix: 1, suffix: 1, label: 1, at: 2 },
+  bars: { unit: 1, at: 2 },
+  line: { unit: 1, at: 2 },
+  headline: { body: 1, paper: 1, mark: 1, at: 2 },
+  say: { at: 2, beat: 1 },
+  arrow: { from: 2, to: 2 },
+  highlight: { from: 2, to: 2 },
+  circle: { at: 2, radius: 1 },
+  box: { at: 2, size: 2 },
+  move: { to: 2 },
+  zoom: { to: 1 },
+  fade: { to: 1 },
+};
+
+interface Parsed {
+  pos: Arg[];
+  kw: Record<string, Arg[][]>; // keyword may repeat (mark)
+}
+
+export function run(src: string): RunResult {
+  try {
+    return { ok: true, timeline: interpret(src) };
+  } catch (e) {
+    if (e instanceof LangError) return { ok: false, error: { message: e.message, line: e.line, col: e.col, len: e.len } };
+    return { ok: false, error: { message: String((e as Error)?.message ?? e), line: 0, col: 0, len: 1 } };
+  }
+}
+
+export function interpret(src: string): Timeline {
+  const prog = parse(src);
+  const tl: Timeline = { title: "Untitled", themeId: "dark-doc", duration: 0, objects: [], stmts: [], transitions: [] };
+  const vars = new Map<string, number>();
+  const objs = new Map<string, TObj>();
+  const counters: Record<string, number> = {};
+  let cursor = 0;
+  let maxT = 0;
+  let iter = 0;
+  let pendingEnter: Trans | undefined;
+  const bump = (t: number) => { if (t > maxT) maxT = t; };
+
+  const err = (msg: string, a: { tok: { line: number; col: number; text: string } }) => {
+    throw new LangError(msg, a.tok.line, a.tok.col, Math.max(1, a.tok.text.length));
+  };
+
+  function evalExpr(e: Expr): number {
+    switch (e.k) {
+      case "num": return e.v;
+      case "var": {
+        if (!vars.has(e.name)) throw new LangError(`Unknown variable "${e.name}"`, e.tok.line, e.tok.col, e.name.length);
+        return vars.get(e.name)!;
+      }
+      case "neg": return -evalExpr(e.a);
+      case "bin": {
+        const a = evalExpr(e.a), b = evalExpr(e.b);
+        switch (e.op) {
+          case "+": return a + b;
+          case "-": return a - b;
+          case "*": return a * b;
+          case "/": if (b === 0) throw new LangError("Division by zero", e.tok.line, e.tok.col); return a / b;
+          case "%": return a % b;
+        }
+      }
+    }
+    return 0;
+  }
+
+  function num(a: Arg | undefined, what: string, near: { tok: any }): NumV {
+    if (!a) return err(`Expected ${what}`, near);
+    if (a.kind === "num") return { v: a.v, span: [a.tok.start, a.tok.end] };
+    if (a.kind === "word") {
+      if (!vars.has(a.name)) err(`Unknown variable "${a.name}" (expected ${what})`, a);
+      return { v: vars.get(a.name)! };
+    }
+    if (a.kind === "expr") return { v: evalExpr(a.expr) };
+    return err(`Expected ${what}`, a);
+  }
+  function str(a: Arg | undefined, what: string, near: { tok: any }): string {
+    if (!a || a.kind !== "str") return err(`Expected ${what} in quotes`, a ?? near);
+    return a.v;
+  }
+  function word(a: Arg | undefined, what: string, near: { tok: any }): string {
+    if (!a || a.kind !== "word") return err(`Expected ${what}`, a ?? near);
+    return a.name;
+  }
+
+  function split(name: string, args: Arg[]): Parsed {
+    const spec = { ...KW["_common"], ...(KW[name] ?? {}) };
+    const out: Parsed = { pos: [], kw: {} };
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i];
+      if (a.kind === "word" && spec[a.name] !== undefined) {
+        const n = spec[a.name];
+        const group = args.slice(i + 1, i + 1 + n);
+        if (group.length < n) err(`"${a.name}" needs ${n} value${n > 1 ? "s" : ""}`, a);
+        (out.kw[a.name] ??= []).push([a, ...group]);
+        i += n;
+      } else out.pos.push(a);
+    }
+    return out;
+  }
+  const kw1 = (p: Parsed, k: string) => p.kw[k]?.[0];
+
+  function getObj(a: Arg | undefined, near: { tok: any }) {
+    const id = word(a, "an object name", near);
+    const o = objs.get(id);
+    if (!o) err(`Unknown object "${id}"`, a!);
+    return o!;
+  }
+
+  const track = (base: number[]): Track => ({ base, segs: [] });
+
+  function makeObj(kind: ObjKind, p: Parsed, stmt: Extract<Stmt, { kind: "cmd" }>, start: number, origin: [number, number], box: TObj["box"], data: any): TObj {
+    if (objs.size >= MAX_OBJECTS) err("Too many objects", { tok: stmt.nameTok });
+    const asG = kw1(p, "as");
+    let id: string;
+    if (asG) id = word(asG[1], "a name after as", asG[0]);
+    else {
+      counters[kind] = (counters[kind] ?? 0) + 1;
+      id = `${kind}${counters[kind]}`;
+    }
+    const atG = kw1(p, "at");
+    let pos: [number, number] = origin;
+    const createSpans: TObj["createSpans"] = {};
+    if (atG) {
+      const x = num(atG[1], "x", atG[0]), y = num(atG[2], "y", atG[0]);
+      pos = [x.v, y.v];
+      createSpans.at = [x.span, y.span];
+    }
+    const scG = kw1(p, "scale");
+    let sc = 1;
+    if (scG) {
+      const s = num(scG[1], "scale", scG[0]);
+      sc = s.v;
+      createSpans.scale = s.span;
+    }
+    const o: TObj = {
+      id, kind, start, end: Infinity, origin, pos: track(pos), scale: track([sc]), opacity: track([1]),
+      progress: track([1]), data, lines: [stmt.line], createLine: stmt.line, createLineEnd: stmt.ll.contentEnd,
+      createSpans, box,
+    };
+    const overG = kw1(p, "over");
+    if (overG) {
+      const d = num(overG[1], "duration", overG[0]);
+      o.progress = track([0]);
+      addSeg(o.progress, { t0: start, t1: start + Math.max(0, d.v), from: [0], to: [1], line: stmt.line, col: overG[0].tok.col, toSpans: [], overSpan: d.span, label: "build" });
+      bump(start + d.v);
+    }
+    if (pendingEnter && start < pendingEnter.t + pendingEnter.d) o.enter = pendingEnter;
+    objs.set(id, o);
+    tl.objects.push(o);
+    bump(start);
+    return o;
+  }
+
+  function animate(o: TObj, which: "pos" | "scale" | "opacity", to: NumV[], p: Parsed, stmt: Extract<Stmt, { kind: "cmd" }>, start: number, from?: number[]) {
+    const overG = kw1(p, "over");
+    const d = overG ? num(overG[1], "duration", overG[0]) : { v: 0 };
+    const tr = o[which];
+    const f = from ?? sample(tr, start);
+    const seg: Seg = {
+      t0: start, t1: start + Math.max(0, d.v), from: f, to: to.map((x) => x.v), line: stmt.line, col: stmt.nameTok.col,
+      toSpans: to.map((x) => x.span), overSpan: d.span, label: stmt.name,
+    };
+    if (from) tr.base = from;
+    addSeg(tr, seg);
+    o.lines.push(stmt.line);
+    bump(seg.t1);
+  }
+
+  function endScene(at: number, trans?: Trans) {
+    for (const o of tl.objects) if (o.end === Infinity) {
+      o.end = trans ? at + trans.d : at;
+      if (trans) o.exit = trans;
+    }
+  }
+
+  function exec(stmts: Stmt[], top: boolean) {
+    for (const s of stmts) {
+      if (++iter > MAX_ITER * 4) throw new LangError("Program too long (loop limit reached)", s.line, 0);
+      const before = cursor;
+      if (s.kind === "let") vars.set(s.name, evalExpr(s.expr));
+      else if (s.kind === "repeat") {
+        const n = Math.floor(evalExpr(s.count));
+        if (n > MAX_ITER) throw new LangError(`repeat ${n} is too large`, s.line, 0, 6);
+        for (let i = 0; i < n; i++) exec(s.body, false);
+      } else if (s.kind === "for") {
+        const a = evalExpr(s.from), b = evalExpr(s.to), st = s.step ? evalExpr(s.step) : a <= b ? 1 : -1;
+        if (st === 0) throw new LangError("step cannot be 0", s.line, 0);
+        if (Math.abs((b - a) / st) > MAX_ITER) throw new LangError("for loop is too large", s.line, 0, 3);
+        for (let v = a; st > 0 ? v <= b + 1e-9 : v >= b - 1e-9; v += st) {
+          vars.set(s.v, v);
+          exec(s.body, false);
+        }
+      } else command(s);
+      if (top) tl.stmts.push({ line: s.line, endLine: s.kind === "repeat" || s.kind === "for" ? s.endLine : s.line, before, after: cursor });
+    }
+  }
+
+  function command(s: Extract<Stmt, { kind: "cmd" }>) {
+    const p = split(s.name, s.args);
+    const near = { tok: s.nameTok };
+    const delayG = kw1(p, "delay");
+    const start = cursor + (delayG ? Math.max(0, num(delayG[1], "delay", delayG[0]).v) : 0);
+    const src = (pAt: number) => p.pos[pAt];
+
+    switch (s.name) {
+      case "project": {
+        tl.title = str(src(0), "a title", near);
+        tl.projectLine = s.line;
+        const th = p.pos.findIndex((a) => a.kind === "word" && a.name === "theme");
+        if (th >= 0) {
+          const name = word(p.pos[th + 1], "a theme name", p.pos[th]);
+          if (!THEME_NAMES[name]) err(`Unknown theme "${name}". Use ${Object.keys(THEME_NAMES).join(", ")}`, p.pos[th + 1]);
+          tl.themeId = THEME_NAMES[name];
+          tl.themeSpan = [p.pos[th + 1].tok.start, p.pos[th + 1].tok.end];
+        }
+        return;
+      }
+      case "wait": {
+        const d = num(src(0), "a duration", near);
+        cursor += Math.max(0, d.v);
+        bump(cursor);
+        return;
+      }
+      case "cut": endScene(start); pendingEnter = undefined; tl.transitions.push({ t: start, d: 0, kind: "cut" }); return;
+      case "crossfade":
+      case "slide": {
+        const d = src(0) ? num(src(0), "a duration", near).v : 0.5;
+        const tr: Trans = { t: start, d, kind: s.name };
+        endScene(start, tr);
+        pendingEnter = tr;
+        tl.transitions.push(tr);
+        return;
+      }
+      case "show": {
+        const kindW = word(src(0), '"photo"', near);
+        if (kindW !== "photo") err('Only "show photo" is supported', src(0)!);
+        const a = src(1);
+        if (!a || a.kind !== "asset") err("Expected an @asset after show photo", a ?? src(0)!);
+        const vg = kw1(p, "vignette");
+        const o = makeObj("photo", p, s, start, [W / 2, H / 2], [0, 0, W, H], {
+          asset: (a as any).name, vignette: !(vg && vg[1].kind === "word" && vg[1].name === "off"),
+        });
+        o.data.assetSpan = [a!.tok.start, a!.tok.end];
+        return;
+      }
+      case "count": {
+        const v = num(src(0), "a number", near);
+        const dec = src(0)?.kind === "num" ? ((src(0)!.tok.text.replace(/s$/, "").split(".")[1] ?? "").length) : 0;
+        const g = (k: string) => (kw1(p, k) ? str(kw1(p, k)![1], k, kw1(p, k)![0]) : "");
+        makeObj("count", p, s, start, [W / 2, H / 2], [360, 220, 1200, 640], {
+          value: v.v, decimals: dec, unit: g("unit"), prefix: g("prefix"), suffix: g("suffix"), label: g("label"),
+        });
+        return;
+      }
+      case "bars": {
+        const title = str(src(0), "a chart title", near);
+        const bars: { label: string; value: number }[] = [];
+        for (let i = 1; i < p.pos.length; i += 2) {
+          bars.push({ label: str(p.pos[i], "a bar label", near), value: num(p.pos[i + 1], "a bar value", p.pos[i]).v });
+        }
+        if (!bars.length) err("bars needs at least one label and value", near);
+        const unit = kw1(p, "unit") ? str(kw1(p, "unit")![1], "unit", near) : "";
+        makeObj("bars", p, s, start, [W / 2, H / 2], [80, 60, 1760, 980], { title, bars, unit });
+        return;
+      }
+      case "line": {
+        const title = str(src(0), "a chart title", near);
+        const points: { x: string; y: number }[] = [];
+        for (let i = 1; i < p.pos.length; i += 2) {
+          const xa = p.pos[i];
+          const x = xa.kind === "str" ? xa.v : xa.kind === "num" ? xa.tok.text : err("Expected a point label", xa);
+          points.push({ x, y: num(p.pos[i + 1], "a y value", xa).v });
+        }
+        if (points.length < 2) err("line needs at least two points", near);
+        const unit = kw1(p, "unit") ? str(kw1(p, "unit")![1], "unit", near) : "";
+        makeObj("line", p, s, start, [W / 2, H / 2], [80, 60, 1760, 980], { title, points, unit });
+        return;
+      }
+      case "headline": {
+        const headline = str(src(0), "a headline", near);
+        const body = kw1(p, "body") ? str(kw1(p, "body")![1], "body text", near) : "";
+        const paper = kw1(p, "paper") ? str(kw1(p, "paper")![1], "paper name", near) : "";
+        const marks = (p.kw["mark"] ?? []).map((g) => str(g[1], "a phrase", g[0]));
+        makeObj("headline", p, s, start, [W / 2, H / 2], [300, 150, 1320, 780], { headline, body, paper, marks });
+        return;
+      }
+      case "say": {
+        const text = str(src(0), "text", near);
+        const beatG = kw1(p, "beat");
+        const beat = beatG ? num(beatG[1], "beat", beatG[0]).v : 0.3;
+        const len = text.length;
+        const w = Math.min(1640, len * 150 * 0.45);
+        const lines = Math.max(1, Math.ceil((len * 150 * 0.45) / 1640));
+        const h = Math.min(820, lines * 162);
+        makeObj("say", p, s, start, [W / 2, H / 2], [W / 2 - w / 2, H / 2 - h / 2, w, h], { text, beat: Math.max(0.05, beat) });
+        return;
+      }
+      case "arrow":
+      case "highlight": {
+        const fg = kw1(p, "from"), tg = kw1(p, "to");
+        if (!fg || !tg) err(`${s.name} needs "from x y to x y"`, near);
+        const x1 = num(fg![1], "x", fg![0]), y1 = num(fg![2], "y", fg![0]);
+        const x2 = num(tg![1], "x", tg![0]), y2 = num(tg![2], "y", tg![0]);
+        const pad = s.name === "highlight" ? 30 : 30;
+        const minx = Math.min(x1.v, x2.v) - pad, miny = Math.min(y1.v, y2.v) - pad;
+        const o = makeObj(s.name, p, s, start, [(x1.v + x2.v) / 2, (y1.v + y2.v) / 2],
+          [minx, miny, Math.abs(x2.v - x1.v) + pad * 2, Math.abs(y2.v - y1.v) + pad * 2],
+          { a: [x1.v, y1.v], b: [x2.v, y2.v] });
+        o.createSpans.from = [x1.span, y1.span];
+        o.createSpans.to = [x2.span, y2.span];
+        return;
+      }
+      case "circle": {
+        const ag = kw1(p, "at");
+        if (!ag) err('circle needs "at x y"', near);
+        const r = kw1(p, "radius") ? num(kw1(p, "radius")![1], "radius", near).v : 80;
+        const cx = num(ag![1], "x", ag![0]).v, cy = num(ag![2], "y", ag![0]).v;
+        makeObj("circle", p, s, start, [cx, cy], [cx - r - 10, cy - r - 10, 2 * r + 20, 2 * r + 20], { r });
+        return;
+      }
+      case "box": {
+        const ag = kw1(p, "at");
+        if (!ag) err('box needs "at x y size w h"', near);
+        const sg = kw1(p, "size");
+        const w = sg ? num(sg[1], "width", sg[0]).v : 200, h = sg ? num(sg[2], "height", sg[0]).v : 120;
+        const x = num(ag![1], "x", ag![0]).v, y = num(ag![2], "y", ag![0]).v;
+        makeObj("box", p, s, start, [x + w / 2, y + h / 2], [x - 6, y - 6, w + 12, h + 12], { w, h });
+        // "at" is the top-left corner; position track uses the center
+        const o = tl.objects[tl.objects.length - 1];
+        o.pos.base = [x + w / 2, y + h / 2];
+        o.data.cornerOffset = [w / 2, h / 2];
+        return;
+      }
+      case "caption": {
+        const o = getObj(src(0), near);
+        o.data.caption = str(src(1), "caption text", src(0)!);
+        o.lines.push(s.line);
+        return;
+      }
+      case "source": {
+        const o = getObj(src(0), near);
+        const text = str(src(1), "source name", src(0)!);
+        const u = src(2);
+        o.data.source = { text, url: u && u.kind === "url" ? u.v : "" };
+        o.lines.push(s.line);
+        return;
+      }
+      case "unverified": {
+        const o = getObj(src(0), near);
+        o.data.unverified = true;
+        o.lines.push(s.line);
+        return;
+      }
+      case "move": {
+        const o = getObj(src(0), near);
+        const tg = kw1(p, "to");
+        if (!tg) err('move needs "to x y"', near);
+        animate(o, "pos", [num(tg![1], "x", tg![0]), num(tg![2], "y", tg![0])], p, s, start);
+        return;
+      }
+      case "zoom": {
+        const first = src(0);
+        if (!first || first.kind === "num") {
+          // zoom transition
+          const d = first ? num(first, "a duration", near).v : 0.5;
+          const tr: Trans = { t: start, d, kind: "zoom" };
+          endScene(start, tr);
+          pendingEnter = tr;
+          tl.transitions.push(tr);
+          return;
+        }
+        const o = getObj(first, near);
+        const tg = kw1(p, "to");
+        const fromV = src(1) ? num(src(1), "start scale", near).v : undefined;
+        const target = tg ? num(tg[1], "scale", tg[0]) : src(1) ? num(src(1), "scale", near) : err("zoom needs a target scale", near);
+        animate(o, "scale", [target], p, s, start, tg && fromV !== undefined ? [fromV] : undefined);
+        return;
+      }
+      case "scale": {
+        const o = getObj(src(0), near);
+        animate(o, "scale", [num(src(1), "a scale", src(0)!)], p, s, start);
+        return;
+      }
+      case "fade": {
+        const o = getObj(src(0), near);
+        const tg = kw1(p, "to");
+        const w = src(1);
+        const target = tg ? num(tg[1], "opacity", tg[0]) : w?.kind === "word" && w.name === "out" ? { v: 0 } : w?.kind === "word" && w.name === "in" ? { v: 1 } : err('fade needs "to 0..1", "in" or "out"', near);
+        animate(o, "opacity", [target], p, s, start);
+        return;
+      }
+      default:
+        err(`Unknown command "${s.name}"`, near);
+    }
+  }
+
+  exec(prog.stmts, true);
+  bump(cursor);
+  tl.duration = Math.max(1, maxT + 0.5);
+  for (const o of tl.objects) if (o.end === Infinity) o.end = tl.duration;
+  return tl;
+}

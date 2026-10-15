@@ -14,3 +14,6 @@
 - Every scene is a pure function of time `t`; never use CSS/timer animation for video content. Why: export steps frames deterministically.
 - Scripts are validated with the zod schema in `src/render/schema.ts`; types derive from it. Why: single source of truth for script format.
 - `noUncheckedIndexedAccess` is off. Why: render code indexes arrays heavily with bounds already guaranteed by loops/timeline math.
+- The studio script language lives in `src/lang/` (lexer → parser → interpreter → Timeline); the program runs once per edit, never per frame. Why: renderTimeline must stay a pure function of t.
+- Hand actions only modify code via `src/lang/writeback.ts`, editing exact literal spans or inserting lines. Why: code is the single source of truth and user formatting/comments must survive.
+- `src/engine/renderTimeline.ts` layers the scene renderers with `transparent: true`. Why: reuse scene drawing without changing it.

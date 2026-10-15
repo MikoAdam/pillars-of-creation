@@ -1,3 +1,4 @@
+import { paintBackground } from "../background";
 import type { LineChartScene, RenderCtx } from "../types";
 import { prog } from "../easing";
 import { alpha, bodyFont, displayFont, displayText } from "../theme";
@@ -5,8 +6,7 @@ import { drawSource, formatNumber } from "../text";
 
 export function renderLineChart(rc: RenderCtx, s: LineChartScene, t: number) {
   const { ctx, theme, width: W, height: H } = rc;
-  ctx.fillStyle = theme.colors.background;
-  ctx.fillRect(0, 0, W, H);
+  paintBackground(rc);
 
   const te = theme.easing.enter(prog(t, 0, 0.5));
   ctx.save();

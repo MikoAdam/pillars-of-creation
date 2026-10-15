@@ -1,3 +1,4 @@
+import { paintBackground } from "../background";
 import type { HeadlineScene, RenderCtx } from "../types";
 import { lerp, prog } from "../easing";
 import { alpha } from "../theme";
@@ -9,8 +10,7 @@ const INK = "#141414";
 /** Newspaper-style card; key phrases get a highlighter sweep, one after another. */
 export function renderHeadline(rc: RenderCtx, s: HeadlineScene, t: number) {
   const { ctx, theme, width: W, height: H } = rc;
-  ctx.fillStyle = theme.colors.background;
-  ctx.fillRect(0, 0, W, H);
+  paintBackground(rc);
 
   const enter = theme.easing.enter(prog(t, 0, 0.6));
   const zoom = lerp(1, 1.08, theme.easing.move(prog(t, 0, s.duration)));

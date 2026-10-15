@@ -31,7 +31,7 @@ export const THEMES: Theme[] = [
 export const getTheme = (id: string) => THEMES.find((t) => t.id === id) ?? THEMES[0];
 
 export const GOOGLE_FONTS_HREF =
-  "https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=DM+Sans:wght@400;500;700&family=Inter+Tight:wght@400;500;700&family=Playfair+Display:wght@700;800&family=Source+Sans+3:wght@400;600;700&display=swap";
+  "https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=DM+Sans:wght@400;500;700&family=Inter+Tight:wght@400;500;700&family=JetBrains+Mono:wght@400;600&family=Playfair+Display:wght@700;800&family=Source+Sans+3:wght@400;600;700&display=swap";
 
 export const displayFont = (th: Theme, px: number) => `${th.fonts.displayWeight} ${px}px "${th.fonts.display}", sans-serif`;
 export const bodyFont = (th: Theme, px: number, weight = 500) => `${weight} ${px}px "${th.fonts.body}", sans-serif`;
