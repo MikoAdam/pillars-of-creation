@@ -1,3 +1,4 @@
+import { paintBackground } from "../background";
 import type { KineticTextScene, RenderCtx } from "../types";
 import { prog } from "../easing";
 import { displayFont, displayText } from "../theme";
@@ -7,8 +8,7 @@ const clean = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{N}%$]/gu, "");
 
 export function renderKineticText(rc: RenderCtx, s: KineticTextScene, t: number) {
   const { ctx, theme, width: W, height: H } = rc;
-  ctx.fillStyle = theme.colors.background;
-  ctx.fillRect(0, 0, W, H);
+  paintBackground(rc);
 
   const words = s.text.split(/\s+/).filter(Boolean).map((w) => displayText(theme, w));
   const emph = new Set(s.emphasis.map(clean));

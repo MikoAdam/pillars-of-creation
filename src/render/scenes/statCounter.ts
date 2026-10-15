@@ -1,3 +1,4 @@
+import { paintBackground } from "../background";
 import type { RenderCtx, StatCounterScene } from "../types";
 import { prog, lerp } from "../easing";
 import { alpha, bodyFont, displayFont } from "../theme";
@@ -5,8 +6,7 @@ import { drawSource, formatNumber } from "../text";
 
 export function renderStatCounter(rc: RenderCtx, s: StatCounterScene, t: number) {
   const { ctx, theme, width: W, height: H } = rc;
-  ctx.fillStyle = theme.colors.background;
-  ctx.fillRect(0, 0, W, H);
+  paintBackground(rc);
 
   const countDur = Math.min(2.2, s.duration * 0.6);
   const c = theme.easing.count(prog(t, 0.2, countDur));

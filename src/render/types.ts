@@ -38,6 +38,8 @@ export interface RenderCtx {
   assets: Assets;
   width: number;
   height: number;
+  /** draw as a layer without filling the background */
+  transparent?: boolean;
 }
 
 export const WIDTH = 1920;

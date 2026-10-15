@@ -1,3 +1,4 @@
+import { paintBackground } from "../background";
 import type { PhotoZoomScene, RenderCtx } from "../types";
 import { lerp, prog } from "../easing";
 import { alpha, bodyFont } from "../theme";
@@ -6,8 +7,7 @@ import { wrapText } from "../text";
 export function renderPhotoZoom(rc: RenderCtx, s: PhotoZoomScene, t: number) {
   const { ctx, theme, width: W, height: H } = rc;
   const p = theme.easing.move(prog(t, 0, s.duration));
-  ctx.fillStyle = theme.colors.background;
-  ctx.fillRect(0, 0, W, H);
+  paintBackground(rc);
 
   const img = s.imageUrl ? rc.assets.get(s.imageUrl) : undefined;
   if (img) {
