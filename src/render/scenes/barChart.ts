@@ -51,7 +51,7 @@ export function renderBarChart(rc: RenderCtx, s: BarChartScene, t: number) {
     ctx.font = bodyFont(theme, Math.min(40, bw * 0.28), 700);
     ctx.textBaseline = "bottom";
     const v = b.value * Math.min(1, Math.max(0, p));
-    const dec = Number.isInteger(b.value) ? 0 : 1;
+    const dec = Number.isInteger(b.value) ? 0 : (String(b.value).split(".")[1]?.length ?? 1);
     ctx.fillText(`${formatNumber(v, dec)}${s.unit}`, x + bw / 2, bottom - h * Math.max(0, p) - 12);
     ctx.globalAlpha = 1;
   });
