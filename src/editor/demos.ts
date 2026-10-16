@@ -96,8 +96,8 @@ unverified tonnes
 wait 3.5s
 slide
 
-bars "Sources of ocean plastic (%)" "Rivers" 80 "Fishing gear" 10 "Ships" 10 over 3s
-unverified
+bars "Sources of ocean plastic (%)" "Rivers" 80 "Fishing gear" 10 "Ships" 10 over 3s as sources
+unverified sources
 wait 4.5s
 crossfade
 
