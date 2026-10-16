@@ -10,6 +10,12 @@ export const THEME_NAMES: Record<string, string> = {
   clean_modern: "clean-modern",
   warm_editorial: "warm-editorial",
   professional: "pro",
+  mint_fresh: "mint",
+  ocean_calm: "ocean",
+  charcoal_minimal: "charcoal",
+  corporate_light: "corporate",
+  vintage_print: "vintage",
+  lavender_dusk: "lavender",
 };
 
 export const COMMANDS = [
