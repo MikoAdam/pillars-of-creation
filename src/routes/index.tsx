@@ -47,7 +47,7 @@ function Studio() {
   const { code } = hist;
   const [timeline, setTimeline] = useState<Timeline>(() => {
     const r = run(SAMPLE_CODE);
-    return r.ok ? r.timeline : { title: "", themeId: "dark-doc", duration: 1, objects: [], stmts: [], transitions: [] };
+    return r.ok ? r.timeline : { title: "", themeId: "clean-modern", style: {}, duration: 1, objects: [], stmts: [], transitions: [] };
   });
   const [ui, setUi] = useState("pro");
   useEffect(() => { const v = localStorage.getItem("pnt:ui"); if (v) setUi(v); }, []);
