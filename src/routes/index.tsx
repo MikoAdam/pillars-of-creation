@@ -12,6 +12,7 @@ import { Stage, type Tool } from "@/editor/Stage";
 import { TimelinePanel } from "@/editor/TimelinePanel";
 import { MediaBin } from "@/editor/MediaBin";
 import { SAMPLE_CODE } from "@/editor/sampleCode";
+import { DEMOS } from "@/editor/demos";
 import { useHistory } from "@/editor/useHistory";
 import { BUILTIN_MEDIA, fileToDataUrl, loadSaved, saveCode, saveMedia, uniqueName, type MediaItem } from "@/editor/assets";
 
@@ -207,6 +208,15 @@ function Studio() {
           {notice && <button onClick={() => setNotice(null)} className="text-destructive">{notice} ✕</button>}
           <button onClick={hist.undo} title="Undo (Ctrl+Z)" className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"><Undo2 className="h-4 w-4" /></button>
           <button onClick={hist.redo} title="Redo (Ctrl+Shift+Z)" className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"><Redo2 className="h-4 w-4" /></button>
+          <select
+            value=""
+            onChange={(e) => { const d = DEMOS.find((x) => x.id === e.target.value); if (d) hand(d.code); }}
+            title="Load a demo (undo with Ctrl+Z)"
+            className="rounded-md border border-border bg-secondary px-2 py-1 text-foreground"
+          >
+            <option value="" disabled>Load demo…</option>
+            {DEMOS.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
           <select
             value={THEME_BY_ID[timeline.themeId]}
             onChange={(e) => hand(setTheme(hist.codeRef.current, timeline, e.target.value))}
