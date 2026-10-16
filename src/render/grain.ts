@@ -34,7 +34,9 @@ function buildTiles() {
 export function drawGrain(ctx: CanvasRenderingContext2D, w: number, h: number, frame: number, strength: number) {
   if (strength <= 0) return;
   if (!tiles) buildTiles();
-  const tile = tiles![frame % COUNT];
+  const f = Number.isFinite(frame) ? Math.max(0, Math.floor(frame)) : 0;
+  const tile = tiles![f % COUNT];
+  frame = f;
   const r = mulberry32(frame + 1);
   const ox = -Math.floor(r() * TILE), oy = -Math.floor(r() * TILE);
   ctx.save();
