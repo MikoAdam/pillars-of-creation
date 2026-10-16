@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { validateProject } from "@/render/schema";
 import { renderFrame } from "@/render/renderer";
@@ -95,29 +95,26 @@ function Preview() {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <header className="flex items-center justify-between border-b border-border px-6 py-4">
-        <div className="flex items-baseline gap-3">
-          <h1 className="font-display text-2xl tracking-wide uppercase">Pillars of Creation</h1>
-          <span className="text-sm text-muted-foreground">Renderer preview</span>
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-6 py-3">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">← Studio</Link>
+          <h1 className="truncate whitespace-nowrap font-display text-xl">Pillars of Creation</h1>
+          <span className="hidden whitespace-nowrap text-sm text-muted-foreground sm:inline">Scene preview</span>
         </div>
-        <div className="flex gap-1 rounded-md border border-border p-1">
-          {THEMES.map((th) => (
-            <button
-              key={th.id}
-              onClick={() => setThemeId(th.id)}
-              className={`flex items-center gap-2 rounded px-3 py-1.5 text-sm transition-colors ${
-                themeId === th.id ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <span className="flex">
-                {[th.colors.background, th.colors.text, th.colors.accent].map((c) => (
-                  <span key={c} className="-ml-1 h-3 w-3 rounded-full border border-border first:ml-0" style={{ background: c }} />
-                ))}
-              </span>
-              {th.name}
-            </button>
-          ))}
-        </div>
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span className="flex">
+            {[getTheme(themeId).colors.background, getTheme(themeId).colors.text, getTheme(themeId).colors.accent].map((c, i) => (
+              <span key={i} className="-ml-1 h-3 w-3 rounded-full border border-border first:ml-0" style={{ background: c }} />
+            ))}
+          </span>
+          <select
+            value={themeId}
+            onChange={(e) => setThemeId(e.target.value)}
+            className="rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground"
+          >
+            {THEMES.map((th) => <option key={th.id} value={th.id}>{th.name}</option>)}
+          </select>
+        </label>
       </header>
 
       {!result.ok ? (
@@ -137,7 +134,7 @@ function Preview() {
           </div>
 
           <div className="mt-4 flex items-center gap-4">
-            <button onClick={toggle} className="w-20 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
+            <button onClick={toggle} className="w-20 shrink-0 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
               {playing ? "Pause" : "Play"}
             </button>
             <div className="relative flex-1">
@@ -156,12 +153,12 @@ function Preview() {
                 ))}
               </div>
             </div>
-            <span className="w-32 text-right font-mono text-sm tabular-nums text-muted-foreground">
+            <span className="w-28 shrink-0 text-right font-mono text-sm tabular-nums text-muted-foreground">
               {fmt(t)} / {fmt(total)}
             </span>
           </div>
 
-          <ol className="mt-6 grid grid-cols-3 gap-2 text-sm md:grid-cols-5 lg:grid-cols-9">
+          <ol className="mt-6 grid grid-cols-3 gap-2 text-sm md:grid-cols-5 lg:grid-cols-9 [&_button]:min-w-0">
             {project!.scenes.map((s, i) => (
               <li key={s.id}>
                 <button
