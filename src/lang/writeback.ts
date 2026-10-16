@@ -111,3 +111,23 @@ export function setTheme(code: string, tl: Timeline, name: string): string {
   }
   return `project "Untitled" theme ${name}\n` + code;
 }
+
+/** Set one style value: edit its literal if the line exists, otherwise add a style line near the top. */
+export function setStyle(code: string, tl: Timeline, key: string, valueText: string): string {
+  const cur = tl.style[key];
+  if (cur) return applyEdits(code, [{ span: cur.span, text: valueText }]);
+  const lines = Object.values(tl.style).map((v) => v!.line);
+  const after = lines.length ? Math.max(...lines) : tl.projectLine;
+  const text = `style ${key} ${valueText}`;
+  if (after === undefined) return text + "\n" + code;
+  return insertLineAfter(code, after, text);
+}
+
+/** Back to the theme default: delete that style line. */
+export function resetStyle(code: string, tl: Timeline, key: string): string {
+  const cur = tl.style[key];
+  if (!cur) return code;
+  const ls = code.split("\n");
+  ls.splice(cur.line, 1);
+  return ls.join("\n");
+}

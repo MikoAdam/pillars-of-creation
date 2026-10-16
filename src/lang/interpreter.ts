@@ -1,25 +1,19 @@
 import { LangError } from "./lexer";
+import { FONT_CHOICES } from "@/render/theme";
 import { parse, type Arg, type Expr, type Span, type Stmt } from "./parser";
 import { addSeg, sample, type ObjKind, type Seg, type TObj, type Timeline, type Track, type Trans } from "./timeline";
 
 export const THEME_NAMES: Record<string, string> = {
-  dark_documentary: "dark-doc",
-  clean_news: "clean-news",
-  bold_pop: "bold-pop",
-  soft_rounded: "soft",
   clean_modern: "clean-modern",
   warm_editorial: "warm-editorial",
-  professional: "pro",
-  mint_fresh: "mint",
-  ocean_calm: "ocean",
-  charcoal_minimal: "charcoal",
-  corporate_light: "corporate",
-  vintage_print: "vintage",
-  lavender_dusk: "lavender",
+  bold_night: "bold-night",
 };
 
+export const STYLE_KEYS = ["background", "text", "accent", "display", "body", "radius", "grain", "caps"] as const;
+export type StyleKey = (typeof STYLE_KEYS)[number];
+
 export const COMMANDS = [
-  "project", "show", "zoom", "scale", "move", "fade", "caption", "source", "unverified", "wait",
+  "project", "style", "show", "zoom", "scale", "move", "fade", "caption", "source", "unverified", "wait",
   "cut", "crossfade", "slide", "count", "bars", "line", "headline", "say", "arrow", "circle", "box",
   "highlight", "let", "repeat", "for", "end",
 ];
@@ -68,7 +62,7 @@ export function run(src: string): RunResult {
 
 export function interpret(src: string): Timeline {
   const prog = parse(src);
-  const tl: Timeline = { title: "Untitled", themeId: "dark-doc", duration: 0, objects: [], stmts: [], transitions: [] };
+  const tl: Timeline = { title: "Untitled", themeId: "clean-modern", style: {}, duration: 0, objects: [], stmts: [], transitions: [] };
   const vars = new Map<string, number>();
   const objs = new Map<string, TObj>();
   const counters: Record<string, number> = {};
@@ -254,6 +248,30 @@ export function interpret(src: string): Timeline {
           tl.themeId = THEME_NAMES[name];
           tl.themeSpan = [p.pos[th + 1].tok.start, p.pos[th + 1].tok.end];
         }
+        return;
+      }
+      case "style": {
+        const k = word(s.args[0], `a style name (${STYLE_KEYS.join(", ")})`, near) as StyleKey;
+        if (!STYLE_KEYS.includes(k)) err(`Unknown style "${k}". Use ${STYLE_KEYS.join(", ")}`, s.args[0]);
+        const v = s.args[1];
+        if (!v) err(`Expected a value for style ${k}`, s.args[0]);
+        const span: Span = [v.tok.start, v.tok.end];
+        let value: string | number | boolean;
+        if (k === "background" || k === "text" || k === "accent") {
+          value = str(v, 'a color like "#ff6b4a"', near);
+          if (!/^#[0-9a-f]{6}$/i.test(value)) err(`Color must look like "#ff6b4a"`, v);
+        } else if (k === "display" || k === "body") {
+          value = str(v, "a font name", near);
+          if (!FONT_CHOICES.some((f) => f.name === value)) err(`Unknown font. Use ${FONT_CHOICES.map((f) => f.name).join(", ")}`, v);
+        } else if (k === "caps") {
+          value = word(v, "on or off", near);
+          if (value !== "on" && value !== "off") err("Use on or off", v);
+          value = value === "on";
+        } else {
+          value = num(v, "a number", near).v;
+          value = k === "grain" ? Math.min(1, Math.max(0, value)) : Math.min(80, Math.max(0, value));
+        }
+        tl.style[k] = { value, span, line: s.line };
         return;
       }
       case "wait": {
