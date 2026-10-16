@@ -59,6 +59,8 @@ export interface Timeline {
   title: string;
   themeId: string;
   themeSpan?: Span | undefined;
+  /** `style` overrides on top of the theme defaults */
+  style: Partial<Record<string, { value: string | number | boolean; span: Span; line: number }>>;
   projectLine?: number | undefined;
   duration: number;
   objects: TObj[];
@@ -96,3 +98,8 @@ export function worldBox(o: TObj, t: number): [number, number, number, number] {
 }
 
 export const alive = (o: TObj, t: number) => t >= o.start && t < o.end;
+
+/** Theme overrides as plain values. */
+export function styleValues(tl: Timeline): Record<string, string | number | boolean> {
+  return Object.fromEntries(Object.entries(tl.style ?? {}).map(([k, v]) => [k, v!.value]));
+}

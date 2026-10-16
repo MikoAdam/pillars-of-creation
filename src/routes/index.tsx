@@ -2,9 +2,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2 } from "lucide-react";
 import { run, THEME_NAMES } from "@/lang/interpreter";
-import type { Timeline, TObj } from "@/lang/timeline";
-import { insertAtTime, setTheme, writeMove, writeOver, writeScale } from "@/lang/writeback";
-import { getTheme, THEMES } from "@/render/theme";
+import { styleValues, type Timeline, type TObj } from "@/lang/timeline";
+import { insertAtTime, resetStyle, setStyle, setTheme, writeMove, writeOver, writeScale } from "@/lang/writeback";
+import { applyStyle, getTheme, THEMES } from "@/render/theme";
+import { StylePanel } from "@/editor/StylePanel";
 import { loadFonts } from "@/render/assets";
 import type { Assets } from "@/render/types";
 import { CodeEditor } from "@/editor/CodeEditor";
@@ -47,7 +48,7 @@ function Studio() {
   const { code } = hist;
   const [timeline, setTimeline] = useState<Timeline>(() => {
     const r = run(SAMPLE_CODE);
-    return r.ok ? r.timeline : { title: "", themeId: "dark-doc", duration: 1, objects: [], stmts: [], transitions: [] };
+    return r.ok ? r.timeline : { title: "", themeId: "clean-modern", style: {}, duration: 1, objects: [], stmts: [], transitions: [] };
   });
   const [ui, setUi] = useState("pro");
   useEffect(() => { const v = localStorage.getItem("pnt:ui"); if (v) setUi(v); }, []);
@@ -104,7 +105,8 @@ function Studio() {
     });
   }, [media, assets]);
 
-  const theme = getTheme(timeline.themeId);
+  const baseTheme = getTheme(timeline.themeId);
+  const theme = useMemo(() => applyStyle(baseTheme, styleValues(timeline)), [baseTheme, timeline]);
   const total = timeline.duration;
 
   const seek = useCallback((v: number) => { tRef.current = v; setT(v); }, []);
@@ -224,6 +226,13 @@ function Studio() {
           >
             {THEMES.map((th) => <option key={th.id} value={THEME_BY_ID[th.id]}>{th.name}</option>)}
           </select>
+          <StylePanel
+            base={baseTheme}
+            theme={theme}
+            overridden={new Set(Object.keys(timeline.style ?? {}))}
+            onSet={(k, v) => { const next = setStyle(hist.codeRef.current, timeline, k, v); if (next !== hist.codeRef.current) hist.setTyped(next); }}
+            onReset={(k) => hand(resetStyle(hist.codeRef.current, timeline, k))}
+          />
           <select value={ui} onChange={(e) => setUi(e.target.value)} title="Studio look" className="rounded-md border border-border bg-secondary px-2 py-1 text-foreground">
             <option value="pro">Studio: Professional</option>
             <option value="clean">Studio: Clean Modern</option>

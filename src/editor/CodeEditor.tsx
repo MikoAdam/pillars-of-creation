@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { COMMANDS, THEME_NAMES } from "@/lang/interpreter";
+import { COMMANDS, STYLE_KEYS, THEME_NAMES } from "@/lang/interpreter";
 
-const KEYWORDS = ["over", "as", "at", "to", "from", "unit", "prefix", "suffix", "label", "beat", "radius", "size", "scale", "delay", "body", "paper", "mark", "theme", "photo", "step", "vignette", "off", "in", "out"];
+const KEYWORDS = ["over", "as", "at", "to", "from", "unit", "prefix", "suffix", "label", "beat", "radius", "size", "scale", "delay", "body", "paper", "mark", "theme", "photo", "step", "vignette", "off", "in", "out", "background", "text", "accent", "display", "radius", "grain", "caps", "on"];
 const OBJ_CMDS = new Set(["move", "zoom", "scale", "fade", "caption", "source", "unverified"]);
 const LH = 20;
 const PAD = 12;
@@ -75,6 +75,7 @@ export function CodeEditor(p: Props) {
     if (prefix.startsWith("@")) pool = p.assetNames.map((a) => "@" + a);
     else if (!words.length) pool = COMMANDS;
     else if (words[words.length - 1] === "theme") pool = Object.keys(THEME_NAMES);
+    else if (words.length === 1 && words[0] === "style") pool = [...STYLE_KEYS];
     else if (words.length === 1 && OBJ_CMDS.has(words[0])) pool = p.objectIds;
     else pool = KEYWORDS;
     if (!prefix) return setAc(null);

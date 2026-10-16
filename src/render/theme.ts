@@ -3,39 +3,6 @@ import { easeInOutSine, easeOutBack, easeOutCubic, easeOutExpo, easeOutQuint, ea
 
 export const THEMES: Theme[] = [
   {
-    id: "dark-doc",
-    name: "Dark Documentary",
-    fonts: { display: "Anton", body: "Inter Tight", displayWeight: 400, displayUpper: true },
-    colors: { background: "#0d0d0f", text: "#ece8e1", accent: "#e8b23a" },
-    easing: { enter: easeOutCubic, move: easeInOutSine, count: easeOutExpo },
-    grain: 0.08,
-  },
-  {
-    id: "clean-news",
-    name: "Clean News",
-    fonts: { display: "Playfair Display", body: "Source Sans 3", displayWeight: 800, displayUpper: false },
-    colors: { background: "#f4f1ea", text: "#16181d", accent: "#c8261e" },
-    easing: { enter: easeOutQuint, move: easeInOutCubic, count: easeOutCubic },
-    grain: 0.035,
-  },
-  {
-    id: "bold-pop",
-    name: "Bold Pop",
-    fonts: { display: "Archivo Black", body: "DM Sans", displayWeight: 400, displayUpper: true },
-    colors: { background: "#1438ff", text: "#ffffff", accent: "#ffe14d" },
-    easing: { enter: easeOutBack, move: easeInOutSine, count: easeOutExpo },
-    grain: 0.05,
-  },
-  {
-    id: "soft",
-    name: "Soft Rounded",
-    fonts: { display: "Nunito", body: "Nunito", displayWeight: 900, displayUpper: false },
-    colors: { background: "#fbf3ee", text: "#3a3350", accent: "#f08a8a" },
-    easing: { enter: easeOutBack, move: easeInOutSine, count: easeOutCubic },
-    grain: 0.02,
-    radius: 36,
-  },
-  {
     id: "clean-modern",
     name: "Clean Modern",
     fonts: { display: "Plus Jakarta Sans", body: "Plus Jakarta Sans", displayWeight: 800, displayUpper: false },
@@ -50,73 +17,57 @@ export const THEMES: Theme[] = [
     fonts: { display: "Fraunces", body: "Work Sans", displayWeight: 700, displayUpper: false },
     colors: { background: "#f3ece0", text: "#2b2420", accent: "#b5452f" },
     easing: { enter: easeOutCubic, move: easeInOutSine, count: easeOutCubic },
-    grain: 0.04,
-    radius: 14,
-  },
-  {
-    id: "pro",
-    name: "Professional",
-    fonts: { display: "IBM Plex Sans", body: "IBM Plex Sans", displayWeight: 700, displayUpper: false },
-    colors: { background: "#0f1b2d", text: "#e8edf5", accent: "#4fa3ff" },
-    easing: { enter: easeOutQuint, move: easeInOutCubic, count: easeOutExpo },
-    grain: 0.015,
-    radius: 16,
-  },
-  {
-    id: "mint",
-    name: "Mint Fresh",
-    fonts: { display: "Nunito", body: "Nunito", displayWeight: 900, displayUpper: false },
-    colors: { background: "#eef8f3", text: "#1f3b34", accent: "#2bb48a" },
-    easing: { enter: easeOutBack, move: easeInOutSine, count: easeOutCubic },
-    grain: 0.015,
-    radius: 32,
-  },
-  {
-    id: "ocean",
-    name: "Ocean Calm",
-    fonts: { display: "Plus Jakarta Sans", body: "Plus Jakarta Sans", displayWeight: 800, displayUpper: false },
-    colors: { background: "#0b2a33", text: "#e6f4f1", accent: "#5fd3c6" },
-    easing: { enter: easeOutQuint, move: easeInOutSine, count: easeOutExpo },
-    grain: 0.02,
-    radius: 22,
-  },
-  {
-    id: "charcoal",
-    name: "Charcoal Minimal",
-    fonts: { display: "Outfit", body: "Outfit", displayWeight: 700, displayUpper: false },
-    colors: { background: "#18181b", text: "#f4f4f5", accent: "#a3e635" },
-    easing: { enter: easeOutQuint, move: easeInOutCubic, count: easeOutExpo },
-    grain: 0.03,
-    radius: 18,
-  },
-  {
-    id: "corporate",
-    name: "Corporate Light",
-    fonts: { display: "IBM Plex Sans", body: "IBM Plex Sans", displayWeight: 600, displayUpper: false },
-    colors: { background: "#ffffff", text: "#1d2939", accent: "#1570ef" },
-    easing: { enter: easeOutCubic, move: easeInOutCubic, count: easeOutCubic },
-    grain: 0,
-    radius: 12,
-  },
-  {
-    id: "vintage",
-    name: "Vintage Print",
-    fonts: { display: "Fraunces", body: "Work Sans", displayWeight: 700, displayUpper: false },
-    colors: { background: "#e9e2cf", text: "#23362b", accent: "#2f6b4f" },
-    easing: { enter: easeOutCubic, move: easeInOutSine, count: easeOutCubic },
-    grain: 0.06,
+    grain: 0.05,
     radius: 10,
   },
   {
-    id: "lavender",
-    name: "Lavender Dusk",
-    fonts: { display: "Outfit", body: "Outfit", displayWeight: 700, displayUpper: false },
-    colors: { background: "#211c33", text: "#efeaff", accent: "#c4a7ff" },
+    id: "bold-night",
+    name: "Bold Night",
+    fonts: { display: "Archivo Black", body: "DM Sans", displayWeight: 400, displayUpper: true },
+    colors: { background: "#111116", text: "#f5f3ee", accent: "#ff6b4a" },
     easing: { enter: easeOutBack, move: easeInOutSine, count: easeOutExpo },
-    grain: 0.025,
-    radius: 28,
+    grain: 0.06,
+    radius: 18,
   },
 ];
+
+/** Fonts a script may pick with `style display/body "..."`, with the weight used for headings. */
+export const FONT_CHOICES: { name: string; weight: number }[] = [
+  { name: "Plus Jakarta Sans", weight: 800 },
+  { name: "Fraunces", weight: 700 },
+  { name: "Archivo Black", weight: 400 },
+  { name: "DM Sans", weight: 700 },
+  { name: "Work Sans", weight: 700 },
+  { name: "Inter Tight", weight: 700 },
+  { name: "Playfair Display", weight: 800 },
+  { name: "Anton", weight: 400 },
+  { name: "Nunito", weight: 900 },
+  { name: "Outfit", weight: 700 },
+  { name: "IBM Plex Sans", weight: 700 },
+  { name: "Source Sans 3", weight: 700 },
+];
+
+export interface StyleOverrides {
+  background?: string; text?: string; accent?: string;
+  display?: string; body?: string; radius?: number; grain?: number; caps?: boolean;
+}
+
+/** Theme defaults with script overrides applied on top. */
+export function applyStyle(base: Theme, o: StyleOverrides): Theme {
+  const w = o.display ? FONT_CHOICES.find((f) => f.name === o.display)?.weight ?? 700 : base.fonts.displayWeight;
+  return {
+    ...base,
+    fonts: {
+      display: o.display ?? base.fonts.display,
+      body: o.body ?? base.fonts.body,
+      displayWeight: w,
+      displayUpper: o.caps ?? base.fonts.displayUpper,
+    },
+    colors: { background: o.background ?? base.colors.background, text: o.text ?? base.colors.text, accent: o.accent ?? base.colors.accent },
+    grain: o.grain ?? base.grain,
+    radius: o.radius ?? base.radius ?? 0,
+  };
+}
 
 export const getTheme = (id: string) => THEMES.find((t) => t.id === id) ?? THEMES[0];
 

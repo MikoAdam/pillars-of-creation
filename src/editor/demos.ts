@@ -5,36 +5,6 @@ export interface Demo { id: string; name: string; code: string }
 export const DEMOS: Demo[] = [
   { id: "chernobyl", name: "Chernobyl Explained", code: SAMPLE_CODE },
   {
-    id: "webb",
-    name: "Webb Telescope",
-    code: `project "How Webb Sees the Past" theme lavender_dusk
-
-say "Light is a *time machine*" beat 0.35s
-wait 2.5s
-crossfade
-
-show photo @pillars as nebula
-zoom nebula 1.0 to 1.2 over 6s
-caption nebula "Pillars of Creation, Eagle Nebula"
-wait 5s
-slide
-
-show photo @telescope as webb
-zoom webb 1.15 to 1.0 over 5s
-caption webb "18 gold-coated mirror segments"
-wait 4s
-crossfade
-
-bars "Mirror diameter (m)" "Spitzer" 0.85 "Hubble" 2.4 "Webb" 6.5 over 3s
-wait 4.5s
-crossfade
-
-count 6500 unit "light-years" label "Distance to the Eagle Nebula" over 2s as dist
-source dist "NASA" https://science.nasa.gov/mission/webb/
-wait 3.5s
-`,
-  },
-  {
     id: "coffee",
     name: "The Price of Coffee",
     code: `project "Why Coffee Got Expensive" theme warm_editorial
@@ -80,33 +50,6 @@ cut
 
 say "Build something people *tell friends about*" beat 0.3s
 wait 3s
-`,
-  },
-  {
-    id: "ocean",
-    name: "Ocean Plastic",
-    code: `project "Where Ocean Plastic Comes From" theme ocean_calm
-
-say "8 million tonnes. *Every year.*" beat 0.4s
-wait 3s
-crossfade
-
-count 8 suffix "M t" label "Plastic entering the ocean each year" over 2s as tonnes
-unverified tonnes
-wait 3.5s
-slide
-
-bars "Sources of ocean plastic (%)" "Rivers" 80 "Fishing gear" 10 "Ships" 10 over 3s as sources
-unverified sources
-wait 4.5s
-crossfade
-
-say "Clean the *rivers*, save the sea" beat 0.35s
-for i from 0 to 2
-  circle at (560 + i*400) 840 radius 40 over 0.4s
-  wait 0.3s
-end
-wait 2.5s
 `,
   },
 ];

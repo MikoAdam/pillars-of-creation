@@ -1,4 +1,5 @@
 import type { Assets, Project, Theme } from "./types";
+import { FONT_CHOICES } from "./theme";
 
 export function collectImageUrls(p: Project): string[] {
   const urls = new Set<string>();
@@ -34,6 +35,6 @@ export async function loadFonts(themes: Theme[]) {
       document.fonts.load(`${t.fonts.displayWeight} 64px "${t.fonts.display}"`),
       document.fonts.load(`500 32px "${t.fonts.body}"`),
       document.fonts.load(`700 32px "${t.fonts.body}"`),
-    ]),
+    ]).concat(FONT_CHOICES.map((f) => document.fonts.load(`${f.weight} 64px "${f.name}"`))),
   ).catch(() => undefined);
 }
