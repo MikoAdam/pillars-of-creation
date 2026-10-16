@@ -1,7 +1,7 @@
 import { paintBackground } from "../background";
 import type { LineChartScene, RenderCtx } from "../types";
 import { prog } from "../easing";
-import { alpha, bodyFont, displayFont, displayText } from "../theme";
+import { alpha, bodyFont, displayFont, displayText, fillRound } from "../theme";
 import { drawSource, formatNumber } from "../text";
 
 export function renderLineChart(rc: RenderCtx, s: LineChartScene, t: number) {
@@ -17,7 +17,7 @@ export function renderLineChart(rc: RenderCtx, s: LineChartScene, t: number) {
   ctx.textAlign = "left";
   ctx.fillText(displayText(theme, s.title), 96, 90 + (1 - te) * 30);
   ctx.fillStyle = theme.colors.accent;
-  ctx.fillRect(96, 196, 120 * te, 8);
+  fillRound(ctx, 96, 196, 120 * te, 8, theme.radius ? 4 : 0);
   ctx.restore();
 
   const left = 200, right = W - 220, top = 300, bottom = H - 200;

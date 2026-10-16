@@ -1,7 +1,7 @@
 import { paintBackground } from "../background";
 import type { PhotoZoomScene, RenderCtx } from "../types";
 import { lerp, prog } from "../easing";
-import { alpha, bodyFont } from "../theme";
+import { alpha, bodyFont, fillRound } from "../theme";
 import { wrapText } from "../text";
 
 export function renderPhotoZoom(rc: RenderCtx, s: PhotoZoomScene, t: number) {
@@ -54,9 +54,11 @@ export function renderPhotoZoom(rc: RenderCtx, s: PhotoZoomScene, t: number) {
     ctx.rect(bx, by, (tw + 72) * e, bh);
     ctx.clip();
     ctx.fillStyle = theme.colors.background;
-    ctx.fillRect(bx, by, tw + 72, bh);
+    const r = theme.radius ?? 0;
+    fillRound(ctx, bx, by, tw + 72, bh, r);
     ctx.fillStyle = theme.colors.accent;
-    ctx.fillRect(bx, by, 10, bh);
+    if (r > 0) fillRound(ctx, bx + 18, by + 22, 8, bh - 44, 4);
+    else ctx.fillRect(bx, by, 10, bh);
     ctx.fillStyle = theme.colors.text;
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";

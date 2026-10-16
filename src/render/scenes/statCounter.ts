@@ -1,7 +1,7 @@
 import { paintBackground } from "../background";
 import type { RenderCtx, StatCounterScene } from "../types";
 import { prog, lerp } from "../easing";
-import { alpha, bodyFont, displayFont } from "../theme";
+import { alpha, bodyFont, displayFont, fillRound } from "../theme";
 import { drawSource, formatNumber } from "../text";
 
 export function renderStatCounter(rc: RenderCtx, s: StatCounterScene, t: number) {
@@ -22,7 +22,7 @@ export function renderStatCounter(rc: RenderCtx, s: StatCounterScene, t: number)
 
   const ruleW = 160 * theme.easing.enter(prog(t, 0.1, 0.6));
   ctx.fillStyle = theme.colors.accent;
-  ctx.fillRect(W / 2 - ruleW / 2, H / 2 + 20 - size / 2 - 130, ruleW, 10);
+  fillRound(ctx, W / 2 - ruleW / 2, H / 2 + 20 - size / 2 - 130, ruleW, 10, theme.radius ? 5 : 0);
 
   ctx.save();
   ctx.globalAlpha = enter;

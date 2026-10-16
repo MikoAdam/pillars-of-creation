@@ -1,7 +1,7 @@
 import { paintBackground } from "../background";
 import type { BarChartScene, RenderCtx } from "../types";
 import { prog } from "../easing";
-import { alpha, bodyFont, displayFont, displayText } from "../theme";
+import { alpha, bodyFont, displayFont, displayText, fillRound } from "../theme";
 import { drawSource, formatNumber } from "../text";
 
 export function renderBarChart(rc: RenderCtx, s: BarChartScene, t: number) {
@@ -17,7 +17,7 @@ export function renderBarChart(rc: RenderCtx, s: BarChartScene, t: number) {
   ctx.textBaseline = "top";
   ctx.fillText(displayText(theme, s.title), 96, 90 + (1 - te) * 30);
   ctx.fillStyle = theme.colors.accent;
-  ctx.fillRect(96, 196, 120 * te, 8);
+  fillRound(ctx, 96, 196, 120 * te, 8, theme.radius ? 4 : 0);
   ctx.restore();
 
   const left = 96, right = W - 96, top = 300, bottom = H - 190;
@@ -39,7 +39,7 @@ export function renderBarChart(rc: RenderCtx, s: BarChartScene, t: number) {
     const x = left + i * (bw + gap);
     const color = !anyHighlight || b.highlight ? theme.colors.accent : alpha(theme.colors.text, 0.35);
     ctx.fillStyle = color;
-    ctx.fillRect(x, bottom - h * Math.max(0, p), bw, h * Math.max(0, p));
+    fillRound(ctx, x, bottom - h * Math.max(0, p), bw, h * Math.max(0, p), theme.radius ?? 0, true);
 
     const lp = prog(t, 0.4 + i * stagger, 0.3);
     ctx.globalAlpha = lp;

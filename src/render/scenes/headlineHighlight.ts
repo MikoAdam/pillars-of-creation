@@ -1,7 +1,7 @@
 import { paintBackground } from "../background";
 import type { HeadlineScene, RenderCtx } from "../types";
 import { lerp, prog } from "../easing";
-import { alpha } from "../theme";
+import { alpha, fillRound } from "../theme";
 import { drawSource, wrapWords } from "../text";
 
 const PAPER = "#f3efe6";
@@ -26,7 +26,7 @@ export function renderHeadline(rc: RenderCtx, s: HeadlineScene, t: number) {
   ctx.shadowBlur = 60;
   ctx.shadowOffsetY = 20;
   ctx.fillStyle = PAPER;
-  ctx.fillRect(-cw / 2, -ch / 2, cw, ch);
+  fillRound(ctx, -cw / 2, -ch / 2, cw, ch, (theme.radius ?? 0) * 1.5);
   ctx.shadowColor = "transparent";
 
   const x0 = -cw / 2 + 80;
@@ -107,7 +107,7 @@ export function renderHeadline(rc: RenderCtx, s: HeadlineScene, t: number) {
       for (const [ry, r] of rows) {
         const len = Math.min(remain, r.x2 - r.x1);
         if (len <= 0) break;
-        ctx.fillRect(r.x1 - 8, ry + blk.lh * 0.12, len + 16, blk.lh * 0.78);
+        fillRound(ctx, r.x1 - 8, ry + blk.lh * 0.12, len + 16, blk.lh * 0.78, Math.min(theme.radius ?? 0, 10));
         remain -= len;
       }
     });
