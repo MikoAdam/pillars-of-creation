@@ -1,4 +1,4 @@
-export const SAMPLE_CODE = `project "Chernobyl Explained" theme dark_documentary
+export const SAMPLE_CODE = `project "Chernobyl Explained" theme clean_modern
 
 show photo @reactor_wide as reactor
 zoom reactor 1.0 to 1.15 over 6s
