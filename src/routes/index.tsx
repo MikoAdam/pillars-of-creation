@@ -51,7 +51,7 @@ function Studio() {
   const [ui, setUi] = useState("pro");
   useEffect(() => { const v = localStorage.getItem("pnt:ui"); if (v) setUi(v); }, []);
   useEffect(() => {
-    if (ui === "pro") delete document.documentElement.dataset.ui; else document.documentElement.dataset.ui = ui;
+    if (ui === "pro") delete document.documentElement.dataset["ui"]; else document.documentElement.dataset["ui"] = ui;
     try { localStorage.setItem("pnt:ui", ui); } catch { /* ignore */ }
   }, [ui]);
   const [error, setError] = useState<{ line: number; col: number; len: number; message: string } | null>(null);
