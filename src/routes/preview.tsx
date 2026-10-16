@@ -125,7 +125,7 @@ function Preview() {
           </ul>
         </div>
       ) : (
-        <section className="mx-auto max-w-6xl p-6">
+        <section className="mx-auto max-w-6xl p-6" style={{ maxWidth: "min(72rem, calc((100vh - 190px) * 16 / 9 + 48px))" }}>
           <div className="relative overflow-hidden rounded-md border border-border bg-card shadow-2xl">
             <canvas ref={canvasRef} width={WIDTH} height={HEIGHT} className="block aspect-video w-full" onClick={toggle} />
             {!assets && (
@@ -153,7 +153,7 @@ function Preview() {
                 ))}
               </div>
             </div>
-            <span className="w-28 shrink-0 text-right font-mono text-sm tabular-nums text-muted-foreground">
+            <span className="shrink-0 whitespace-nowrap text-right font-mono text-sm tabular-nums text-muted-foreground">
               {fmt(t)} / {fmt(total)}
             </span>
           </div>
