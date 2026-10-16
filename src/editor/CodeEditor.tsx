@@ -75,7 +75,7 @@ export function CodeEditor(p: Props) {
     if (prefix.startsWith("@")) pool = p.assetNames.map((a) => "@" + a);
     else if (!words.length) pool = COMMANDS;
     else if (words[words.length - 1] === "theme") pool = Object.keys(THEME_NAMES);
-    else if (words.length === 2 && words[0] === "style") pool = [...STYLE_KEYS];
+    else if (words.length === 1 && words[0] === "style") pool = [...STYLE_KEYS];
     else if (words.length === 1 && OBJ_CMDS.has(words[0])) pool = p.objectIds;
     else pool = KEYWORDS;
     if (!prefix) return setAc(null);
