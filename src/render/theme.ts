@@ -26,12 +26,48 @@ export const THEMES: Theme[] = [
     easing: { enter: easeOutBack, move: easeInOutSine, count: easeOutExpo },
     grain: 0.05,
   },
+  {
+    id: "soft",
+    name: "Soft Rounded",
+    fonts: { display: "Nunito", body: "Nunito", displayWeight: 900, displayUpper: false },
+    colors: { background: "#fbf3ee", text: "#3a3350", accent: "#f08a8a" },
+    easing: { enter: easeOutBack, move: easeInOutSine, count: easeOutCubic },
+    grain: 0.02,
+    radius: 36,
+  },
+  {
+    id: "clean-modern",
+    name: "Clean Modern",
+    fonts: { display: "Plus Jakarta Sans", body: "Plus Jakarta Sans", displayWeight: 800, displayUpper: false },
+    colors: { background: "#f7f8fa", text: "#111827", accent: "#2f6bff" },
+    easing: { enter: easeOutQuint, move: easeInOutCubic, count: easeOutExpo },
+    grain: 0,
+    radius: 24,
+  },
+  {
+    id: "warm-editorial",
+    name: "Warm Editorial",
+    fonts: { display: "Fraunces", body: "Work Sans", displayWeight: 700, displayUpper: false },
+    colors: { background: "#f3ece0", text: "#2b2420", accent: "#b5452f" },
+    easing: { enter: easeOutCubic, move: easeInOutSine, count: easeOutCubic },
+    grain: 0.04,
+    radius: 14,
+  },
+  {
+    id: "pro",
+    name: "Professional",
+    fonts: { display: "IBM Plex Sans", body: "IBM Plex Sans", displayWeight: 700, displayUpper: false },
+    colors: { background: "#0f1b2d", text: "#e8edf5", accent: "#4fa3ff" },
+    easing: { enter: easeOutQuint, move: easeInOutCubic, count: easeOutExpo },
+    grain: 0.015,
+    radius: 16,
+  },
 ];
 
 export const getTheme = (id: string) => THEMES.find((t) => t.id === id) ?? THEMES[0];
 
 export const GOOGLE_FONTS_HREF =
-  "https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=DM+Sans:wght@400;500;700&family=Inter+Tight:wght@400;500;700&family=JetBrains+Mono:wght@400;600&family=Playfair+Display:wght@700;800&family=Source+Sans+3:wght@400;600;700&display=swap";
+  "https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=DM+Sans:wght@400;500;700&family=Inter+Tight:wght@400;500;700&family=JetBrains+Mono:wght@400;600&family=Playfair+Display:wght@700;800&family=Source+Sans+3:wght@400;600;700&family=Nunito:wght@500;700;900&family=Plus+Jakarta+Sans:wght@500;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Work+Sans:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap";
 
 export const displayFont = (th: Theme, px: number) => `${th.fonts.displayWeight} ${px}px "${th.fonts.display}", sans-serif`;
 export const bodyFont = (th: Theme, px: number, weight = 500) => `${weight} ${px}px "${th.fonts.body}", sans-serif`;
@@ -41,4 +77,14 @@ export const displayText = (th: Theme, s: string) => (th.fonts.displayUpper ? s.
 export function alpha(hex: string, a: number) {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+/** Fill a rectangle with rounded corners (r = 0 gives a plain rect). `topOnly` rounds just the top corners. */
+export function fillRound(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number, topOnly = false) {
+  if (w <= 0 || h <= 0) return;
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
+  if (rr === 0) return ctx.fillRect(x, y, w, h);
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, topOnly ? [rr, rr, 0, 0] : rr);
+  ctx.fill();
 }

@@ -6,6 +6,10 @@ export const THEME_NAMES: Record<string, string> = {
   dark_documentary: "dark-doc",
   clean_news: "clean-news",
   bold_pop: "bold-pop",
+  soft_rounded: "soft",
+  clean_modern: "clean-modern",
+  warm_editorial: "warm-editorial",
+  professional: "pro",
 };
 
 export const COMMANDS = [

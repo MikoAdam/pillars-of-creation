@@ -28,6 +28,8 @@ export interface Theme {
   colors: { background: string; text: string; accent: string };
   easing: { enter: EaseFn; move: EaseFn; count: EaseFn };
   grain: number; // 0..1 opacity
+  /** corner radius in px for boxes, bars and captions (0 = sharp) */
+  radius?: number;
 }
 
 export type Assets = Map<string, HTMLImageElement>;

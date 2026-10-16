@@ -48,6 +48,12 @@ function Studio() {
     const r = run(SAMPLE_CODE);
     return r.ok ? r.timeline : { title: "", themeId: "dark-doc", duration: 1, objects: [], stmts: [], transitions: [] };
   });
+  const [ui, setUi] = useState("pro");
+  useEffect(() => { const v = localStorage.getItem("pnt:ui"); if (v) setUi(v); }, []);
+  useEffect(() => {
+    if (ui === "pro") delete document.documentElement.dataset["ui"]; else document.documentElement.dataset["ui"] = ui;
+    try { localStorage.setItem("pnt:ui", ui); } catch { /* ignore */ }
+  }, [ui]);
   const [error, setError] = useState<{ line: number; col: number; len: number; message: string } | null>(null);
   const [t, setT] = useState(0);
   const tRef = useRef(0);
@@ -194,7 +200,7 @@ function Studio() {
     <main className="flex h-screen min-h-[640px] flex-col bg-background text-foreground">
       <header className="flex h-11 shrink-0 items-center justify-between border-b border-border px-4">
         <div className="flex items-baseline gap-3">
-          <h1 className="font-display text-lg uppercase tracking-wide">Paint &amp; Turtle</h1>
+          <h1 className="font-display text-lg font-semibold tracking-tight">Paint &amp; Turtle</h1>
           <span className="truncate text-xs text-muted-foreground">{timeline.title}</span>
         </div>
         <div className="flex items-center gap-2 text-xs">
@@ -207,6 +213,12 @@ function Studio() {
             className="rounded-md border border-border bg-secondary px-2 py-1 text-foreground"
           >
             {THEMES.map((th) => <option key={th.id} value={THEME_BY_ID[th.id]}>{th.name}</option>)}
+          </select>
+          <select value={ui} onChange={(e) => setUi(e.target.value)} title="Studio look" className="rounded-md border border-border bg-secondary px-2 py-1 text-foreground">
+            <option value="pro">Studio: Professional</option>
+            <option value="clean">Studio: Clean Modern</option>
+            <option value="soft">Studio: Soft Rounded</option>
+            <option value="editorial">Studio: Warm Editorial</option>
           </select>
           <Link to="/preview" className="text-muted-foreground hover:text-foreground">Scene preview</Link>
         </div>
