@@ -17,3 +17,5 @@
 - The studio script language lives in `src/lang/` (lexer → parser → interpreter → Timeline); the program runs once per edit, never per frame. Why: renderTimeline must stay a pure function of t.
 - Hand actions only modify code via `src/lang/writeback.ts`, editing exact literal spans or inserting lines. Why: code is the single source of truth and user formatting/comments must survive.
 - `src/engine/renderTimeline.ts` layers the scene renderers with `transparent: true`. Why: reuse scene drawing without changing it.
+- Every drag-and-drop action in the studio has a matching script command/keyword (enter/exit, rotate, opacity, delay, camera, shake, pulse, wiggle, transitions); new hand features must add the script form first. Why: script and hand editing stay equal in power.
+- Camera, entrance/exit effects and transitions are applied in `src/engine/renderTimeline.ts`, not in scene renderers; the camera resets at each scene change. Why: scene renderers stay untouched and pure.

@@ -8,14 +8,20 @@ import { renderLineChart } from "@/render/scenes/lineChart";
 import { renderHeadline } from "@/render/scenes/headlineHighlight";
 import { renderKineticText } from "@/render/scenes/kineticText";
 import { alpha } from "@/render/theme";
-import { alive, sample, type TObj, type Timeline, type Trans } from "@/lang/timeline";
+import { alive, cameraAt, EASES, sample, type Fx, type TObj, type Timeline, type Trans } from "@/lang/timeline";
 
 export interface Override {
   id: string;
   dx: number;
   dy: number;
   scaleMul: number;
+  /** extra rotation in degrees */
+  drot?: number;
+  /** opacity replacement while dragging a slider */
+  opacity?: number;
 }
+
+type Cam = ReturnType<typeof cameraAt>;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -31,40 +37,105 @@ export function renderTimeline(ctx: CanvasRenderingContext2D, tl: Timeline, them
   ctx.globalAlpha = 1;
   ctx.fillStyle = theme.colors.background;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  const cam = cameraAt(tl, t);
   for (const o of tl.objects) {
     if (!alive(o, t)) continue;
-    drawObject(ctx, o, theme, assets, t, override?.id === o.id ? override : undefined);
+    drawObject(ctx, o, theme, assets, t, cam, override?.id === o.id ? override : undefined);
   }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.filter = "none";
   drawGrain(ctx, WIDTH, HEIGHT, Math.floor(t * FPS), theme.grain);
 }
 
-function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets: Assets, t: number, ov?: Override) {
+/** Entrance/exit look: a = 0 (hidden) .. 1 (fully shown). */
+function applyFx(ctx: CanvasRenderingContext2D, fx: Fx, raw: number, box: TObj["box"], st: { op: number; s: number; rot: number; dx: number; dy: number; blur: number }) {
+  const e = (n: string) => EASES[n](raw);
+  switch (fx.style) {
+    case "fade": st.op *= e("out"); break;
+    case "pop": st.op *= Math.min(1, raw * 2.5); st.s *= 0.3 + 0.7 * e("overshoot"); break;
+    case "rise": st.op *= e("out"); st.dy += 90 * (1 - e("snap")); break;
+    case "drop": st.op *= Math.min(1, raw * 3); st.dy -= 260 * (1 - e("bounce")); break;
+    case "slide_left": st.op *= Math.min(1, raw * 2); st.dx -= 420 * (1 - e("snap")); break;
+    case "slide_right": st.op *= Math.min(1, raw * 2); st.dx += 420 * (1 - e("snap")); break;
+    case "blur": st.op *= e("out"); st.blur += 28 * (1 - e("out")); st.s *= 1.12 - 0.12 * e("out"); break;
+    case "spin": st.op *= Math.min(1, raw * 2); st.rot -= 120 * (1 - e("overshoot")); st.s *= 0.5 + 0.5 * e("overshoot"); break;
+    case "grow": st.s *= e("snap"); break;
+    case "wipe": {
+      const [x, y, w, h] = box;
+      ctx.beginPath();
+      ctx.rect(x, y, w * e("smooth"), h);
+      ctx.clip();
+      break;
+    }
+  }
+}
+
+function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets: Assets, t: number, cam: Cam, ov?: Override) {
   const local = t - o.start;
   let [px, py] = sample(o.pos, t);
   let s = sample(o.scale, t)[0];
-  let op = sample(o.opacity, t)[0];
+  let op = ov?.opacity ?? sample(o.opacity, t)[0];
+  let rot = sample(o.rot, t)[0] + (ov?.drot ?? 0);
   const p = sample(o.progress, t, true)[0];
   if (ov) { px += ov.dx; py += ov.dy; s *= ov.scaleMul; }
 
   ctx.save();
-  // scene transitions
+  let blur = 0;
+  // scene transitions (screen space, before the camera)
   if (o.enter && t < o.enter.t + o.enter.d) {
     const a = transAmount(o.enter, t);
-    if (o.enter.kind === "crossfade") op *= a;
-    if (o.enter.kind === "slide") ctx.translate(WIDTH * (1 - a), 0);
-    if (o.enter.kind === "zoom") { op *= a; zoomAbout(ctx, 0.85 + 0.15 * a); }
+    switch (o.enter.kind) {
+      case "crossfade": op *= a; break;
+      case "slide": ctx.translate(WIDTH * (1 - a), 0); break;
+      case "zoom": op *= a; zoomAbout(ctx, 0.85 + 0.15 * a); break;
+      case "push": ctx.translate(0, HEIGHT * (1 - a)); break;
+      case "whip": { const w = whip(o.enter, t); ctx.translate(WIDTH * (1 - w), 0); blur += 40 * Math.sin(Math.PI * w); break; }
+      case "blur": op *= a; blur += 30 * (1 - a); break;
+      case "wipe": ctx.beginPath(); ctx.rect(0, 0, WIDTH * a, HEIGHT); ctx.clip(); break;
+    }
   }
   if (o.exit && t >= o.exit.t) {
     const a = transAmount(o.exit, t);
-    if (o.exit.kind === "crossfade") op *= 1 - a;
-    if (o.exit.kind === "slide") ctx.translate(-WIDTH * a, 0);
-    if (o.exit.kind === "zoom") { op *= 1 - a; zoomAbout(ctx, 1 + 0.4 * a); }
+    switch (o.exit.kind) {
+      case "crossfade": op *= 1 - a; break;
+      case "slide": ctx.translate(-WIDTH * a, 0); break;
+      case "zoom": op *= 1 - a; zoomAbout(ctx, 1 + 0.4 * a); break;
+      case "push": ctx.translate(0, -HEIGHT * a); break;
+      case "whip": { const w = whip(o.exit, t); ctx.translate(-WIDTH * w, 0); blur += 40 * Math.sin(Math.PI * w); break; }
+      case "blur": op *= 1 - a; blur += 30 * a; break;
+      case "wipe": break;
+    }
   }
-  ctx.globalAlpha = clamp01(op);
+  // camera
+  ctx.translate(WIDTH / 2 + cam.sx, HEIGHT / 2 + cam.sy);
+  ctx.scale(cam.z, cam.z);
+  ctx.translate(-cam.cx, -cam.cy);
+
+  // entrance / exit effects and emphasis
+  const st = { op: 1, s: 1, rot: 0, dx: 0, dy: 0, blur: 0 };
+  const fxIn = o.enterFx, fxOut = o.exitFx;
+  for (const pl of o.pulses) {
+    if (t < pl.t0 || t >= pl.t1) continue;
+    const q = (t - pl.t0) / Math.max(1e-6, pl.t1 - pl.t0);
+    if (pl.kind === "pulse") st.s *= 1 + pl.amt * Math.sin(Math.PI * q);
+    else st.rot += pl.amt * Math.sin(q * Math.PI * 6) * (1 - q);
+  }
+  ctx.translate(px + st.dx, py + st.dy);
   const ts = o.kind === "photo" ? 1 : s;
-  ctx.translate(px, py);
-  ctx.scale(ts, ts);
+  const fxState = { op: 1, s: 1, rot: 0, dx: 0, dy: 0, blur: 0 };
+  if (fxIn && local < fxIn.d) applyFxPre(fxIn, clamp01(local / fxIn.d), fxState);
+  if (fxOut && t > o.end - fxOut.d && o.end !== Infinity) applyFxPre(fxOut, clamp01((o.end - t) / fxOut.d), fxState);
+  ctx.translate(fxState.dx, fxState.dy);
+  ctx.rotate(((rot + st.rot + fxState.rot) * Math.PI) / 180);
+  ctx.scale(ts * st.s * fxState.s, ts * st.s * fxState.s);
   ctx.translate(-o.origin[0], -o.origin[1]);
+  if (fxIn && local < fxIn.d && fxIn.style === "wipe") applyFx(ctx, fxIn, clamp01(local / fxIn.d), o.box, fxState);
+  if (fxOut && fxOut.style === "wipe" && t > o.end - fxOut.d) applyFx(ctx, fxOut, clamp01((o.end - t) / fxOut.d), o.box, fxState);
+  blur += fxState.blur;
+  op *= fxState.op * st.op;
+  if (blur > 0.3) ctx.filter = `blur(${blur.toFixed(1)}px)`;
+  ctx.globalAlpha = clamp01(op);
 
   const rc: RenderCtx = { ctx, theme, assets, width: WIDTH, height: HEIGHT, transparent: true };
   const d = o.data;
@@ -110,6 +181,16 @@ function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets
     case "box": drawBox(ctx, o.origin, d.w, d.h, p, theme); break;
   }
   ctx.restore();
+}
+
+function applyFxPre(fx: Fx, raw: number, st: { op: number; s: number; rot: number; dx: number; dy: number; blur: number }) {
+  if (fx.style === "wipe") return;
+  applyFx(null as unknown as CanvasRenderingContext2D, fx, raw, [0, 0, 0, 0], st);
+}
+
+function whip(tr: Trans, t: number) {
+  const p = clamp01((t - tr.t) / Math.max(1e-6, tr.d));
+  return p < 0.5 ? Math.pow(2, 20 * p - 10) / 2 : (2 - Math.pow(2, -20 * p + 10)) / 2;
 }
 
 function zoomAbout(ctx: CanvasRenderingContext2D, k: number) {

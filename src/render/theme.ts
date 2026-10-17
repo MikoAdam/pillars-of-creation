@@ -11,24 +11,6 @@ export const THEMES: Theme[] = [
     grain: 0,
     radius: 24,
   },
-  {
-    id: "warm-editorial",
-    name: "Warm Editorial",
-    fonts: { display: "Fraunces", body: "Work Sans", displayWeight: 700, displayUpper: false },
-    colors: { background: "#f3ece0", text: "#2b2420", accent: "#b5452f" },
-    easing: { enter: easeOutCubic, move: easeInOutSine, count: easeOutCubic },
-    grain: 0.05,
-    radius: 10,
-  },
-  {
-    id: "bold-night",
-    name: "Bold Night",
-    fonts: { display: "Archivo Black", body: "DM Sans", displayWeight: 400, displayUpper: true },
-    colors: { background: "#111116", text: "#f5f3ee", accent: "#ff6b4a" },
-    easing: { enter: easeOutBack, move: easeInOutSine, count: easeOutExpo },
-    grain: 0.06,
-    radius: 18,
-  },
 ];
 
 /** Fonts a script may pick with `style display/body "..."`, with the weight used for headings. */

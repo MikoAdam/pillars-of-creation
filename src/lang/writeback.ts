@@ -131,3 +131,49 @@ export function resetStyle(code: string, tl: Timeline, key: string): string {
   ls.splice(cur.line, 1);
   return ls.join("\n");
 }
+
+type PropTrack = "rot" | "opacity";
+const PROP = {
+  rot: { create: "rotate" as const, cmd: (id: string, v: string) => `rotate ${id} ${v} over 0.3s`, fmt: r0 },
+  opacity: { create: "opacity" as const, cmd: (id: string, v: string) => `fade ${id} to ${v} over 0.3s`, fmt: r2 },
+};
+
+/** Rotation / opacity from the canvas: edit the latest literal, else add a keyword or a command. */
+export function writeProp(code: string, tl: Timeline, o: TObj, T: number, which: PropTrack, v: number): string {
+  const cfg = PROP[which];
+  const segs = o[which].segs.filter((s) => s.t0 <= T + 1e-6);
+  const last = segs[segs.length - 1];
+  if (last) {
+    if (last.toSpans[0]) return applyEdits(code, [{ span: last.toSpans[0], text: cfg.fmt(v) }]);
+    return insertAtTime(code, tl, T, cfg.cmd(o.id, cfg.fmt(v))).code;
+  }
+  const sp = o.createSpans[cfg.create];
+  if (sp) return applyEdits(code, [{ span: sp, text: cfg.fmt(v) }]);
+  return appendToCreate(code, o, ` ${cfg.create} ${cfg.fmt(v)}`);
+}
+
+/** Entrance / exit style on the creation line. `null` removes nothing but sets "fade". */
+export function writeFx(code: string, o: TObj, which: "enter" | "exit", style: string): string {
+  const fx = which === "enter" ? o.enterFx : o.exitFx;
+  if (fx?.span) return applyEdits(code, [{ span: fx.span, text: style }]);
+  return appendToCreate(code, o, ` ${which} ${style}`);
+}
+
+/** Remove an entrance / exit keyword pair from the creation line. */
+export function removeFx(code: string, o: TObj, which: "enter" | "exit"): string {
+  const fx = which === "enter" ? o.enterFx : o.exitFx;
+  if (!fx?.span) return code;
+  const kwStart = code.lastIndexOf(which, fx.span[0]);
+  let a = kwStart;
+  while (a > 0 && code[a - 1] === " ") a--;
+  return code.slice(0, a) + code.slice(fx.span[1]);
+}
+
+/** Dragging a timeline block: make a line start at newStart by editing or adding its delay. */
+export function writeStart(code: string, info: { base: number; delaySpan?: Span | undefined; hasDelay?: boolean | undefined; lineEnd: number }, newStart: number): string {
+  const d = Math.max(0, Math.round((newStart - info.base) * 10) / 10);
+  if (info.delaySpan) return applyEdits(code, [{ span: info.delaySpan, text: durText(code, info.delaySpan, d) }]);
+  if (info.hasDelay) return code; // delay is an expression: leave it alone
+  if (d < 0.05) return code;
+  return code.slice(0, info.lineEnd) + ` delay ${fmtDur(d)}` + code.slice(info.lineEnd);
+}
