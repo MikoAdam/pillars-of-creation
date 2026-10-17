@@ -122,15 +122,8 @@ function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets
     else st.rot += pl.amt * Math.sin(q * Math.PI * 6) * (1 - q);
   }
   ctx.translate(px + st.dx, py + st.dy);
-  const pre = { ...st };
-  if (fxIn && local < fxIn.d) { ctx.save(); ctx.restore(); }
-  void pre;
-  // fx transforms need the object's local box for wipes: apply after moving into local space
   const ts = o.kind === "photo" ? 1 : s;
   const fxState = { op: 1, s: 1, rot: 0, dx: 0, dy: 0, blur: 0 };
-  ctx.save();
-  ctx.translate(-px - st.dx, -py - st.dy);
-  ctx.restore();
   if (fxIn && local < fxIn.d) applyFxPre(fxIn, clamp01(local / fxIn.d), fxState);
   if (fxOut && t > o.end - fxOut.d && o.end !== Infinity) applyFxPre(fxOut, clamp01((o.end - t) / fxOut.d), fxState);
   ctx.translate(fxState.dx, fxState.dy);
