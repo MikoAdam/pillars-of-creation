@@ -3,7 +3,7 @@ import { COMMANDS, STYLE_KEYS, THEME_NAMES } from "@/lang/interpreter";
 import { EASE_NAMES, FX_STYLES } from "@/lang/timeline";
 
 const KEYWORDS = ["over", "as", "at", "to", "from", "unit", "prefix", "suffix", "label", "beat", "radius", "size", "scale", "delay", "body", "paper", "mark", "theme", "photo", "step", "vignette", "off", "in", "out", "background", "text", "accent", "display", "radius", "grain", "caps", "on", "enter", "exit", "rotate", "ease", "curve", "opacity", "zoom", ...EASE_NAMES, ...FX_STYLES];
-const OBJ_CMDS = new Set(["move", "zoom", "scale", "fade", "caption", "source", "unverified"]);
+const OBJ_CMDS = new Set(["move", "zoom", "scale", "fade", "caption", "source", "unverified", "rotate", "pulse", "wiggle"]);
 const LH = 20;
 const PAD = 12;
 

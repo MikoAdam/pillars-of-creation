@@ -14,15 +14,15 @@ import { styleValues } from "@/lang/timeline";
 import { applyStyle, getTheme, THEMES } from "@/render/theme";
 
 describe("looks", () => {
-  it("there are exactly three looks", () => expect(THEMES.length).toBe(3));
+  it("there is exactly one look", () => expect(THEMES.length).toBe(1));
   it("there are exactly three demos", () => expect(DEMOS.length).toBe(3));
   it("style lines override the look and reset removes them", () => {
-    const base = 'project "X" theme warm_editorial\nsay "hi"\n';
+    const base = 'project "X" theme clean_modern\nsay "hi"\n';
     const tl1 = (run(base) as any).timeline;
     const c2 = setStyle(base, tl1, "accent", '"#00ff00"');
     const tl2 = (run(c2) as any).timeline;
     expect(applyStyle(getTheme(tl2.themeId), styleValues(tl2)).colors.accent).toBe("#00ff00");
-    expect(applyStyle(getTheme(tl2.themeId), styleValues(tl2)).colors.background).toBe("#f3ece0");
+    expect(applyStyle(getTheme(tl2.themeId), styleValues(tl2)).colors.background).toBe("#f7f8fa");
     const c3 = setStyle(c2, tl2, "accent", '"#123456"');
     expect(c3).toContain('style accent "#123456"');
     expect(resetStyle(c3, (run(c3) as any).timeline, "accent")).toBe(base);
