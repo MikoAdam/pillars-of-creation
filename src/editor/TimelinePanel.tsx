@@ -1,6 +1,8 @@
 import { useRef, useState, type PointerEvent as RPE } from "react";
 import type { Span } from "@/lang/parser";
-import type { Seg, Timeline } from "@/lang/timeline";
+import type { Seg, Timeline, TObj } from "@/lang/timeline";
+
+export interface StartInfo { base: number; delaySpan?: Span | undefined; hasDelay?: boolean; lineEnd: number }
 
 interface Props {
   timeline: Timeline;
@@ -9,6 +11,7 @@ interface Props {
   onSeek: (t: number) => void;
   onSelect: (id: string) => void;
   onOver: (span: Span, d: number) => void;
+  onStart: (info: StartInfo, start: number) => void;
 }
 
 const PX = 70;
@@ -20,6 +23,24 @@ export function TimelinePanel(p: Props) {
   const area = useRef<HTMLDivElement>(null);
   const [edge, setEdge] = useState<{ key: string; d: number; span: Span; startX: number; d0: number } | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
+  const [shift, setShift] = useState<{ key: string; t0: number; startX: number; nt: number; info: StartInfo } | null>(null);
+  const shiftHandlers = (key: string, t0: number, info: StartInfo, sel: () => void) => ({
+    onPointerDown: (e: RPE) => {
+      e.stopPropagation(); sel();
+      if (info.hasDelay && !info.delaySpan) return;
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      setShift({ key, t0, startX: e.clientX, nt: t0, info });
+    },
+    onPointerMove: (e: RPE) => {
+      if (shift?.key !== key) return;
+      setShift({ ...shift, nt: Math.max(shift.info.base, Math.round((shift.t0 + (e.clientX - shift.startX) / PX) * 10) / 10) });
+    },
+    onPointerUp: () => {
+      if (shift?.key === key && Math.abs(shift.nt - shift.t0) >= 0.05) p.onStart(shift.info, shift.nt);
+      setShift(null);
+    },
+  });
+  const objInfo = (o: TObj): StartInfo => ({ base: o.base, delaySpan: o.createSpans.delay, hasDelay: o.createSpans.hasDelay, lineEnd: o.createLineEnd });
   const tl = p.timeline;
   const width = Math.max(tl.duration * PX + 80, 600);
 
@@ -32,15 +53,17 @@ export function TimelinePanel(p: Props) {
   const bounds = [0, ...tl.transitions.map((x) => x.t), tl.duration];
   const scenes = bounds.slice(0, -1).map((s, i) => ({ s, e: bounds[i + 1], i })).filter((x) => x.e - x.s > 0.01);
 
-  const segBlock = (o: string, seg: Seg, k: number) => {
+  const segBlock = (o: string, seg: Seg, k: number, sel: () => void) => {
     const key = `${o}:${k}`;
     const d = edge?.key === key ? edge.d : seg.t1 - seg.t0;
+    const left = shift?.key === key ? shift.nt : seg.t0;
     return (
       <div
         key={key}
-        title={`${seg.label} · line ${seg.line + 1}`}
-        className="absolute top-1 h-[18px] rounded-sm border border-primary/60 bg-primary/30 text-[10px] leading-[16px] text-foreground"
-        style={{ left: seg.t0 * PX, width: Math.max(4, d * PX) }}
+        title={`${seg.label} · line ${seg.line + 1} · drag to move, drag the right edge to resize`}
+        className={`absolute top-1 h-[18px] cursor-grab rounded-md border border-primary/60 bg-primary/30 text-[10px] leading-[16px] text-foreground ${shift?.key === key ? "ring-2 ring-primary" : ""}`}
+        style={{ left: left * PX, width: Math.max(4, d * PX) }}
+        {...shiftHandlers(key, seg.t0, seg, sel)}
       >
         <span className="pointer-events-none truncate px-1">{seg.label} {Math.round(d * 10) / 10}s</span>
         {seg.overSpan && (
@@ -98,11 +121,16 @@ export function TimelinePanel(p: Props) {
           ))}
         </div>
         {tl.objects.map((o) => {
-          const segs = [...o.progress.segs, ...o.pos.segs, ...o.scale.segs, ...o.opacity.segs];
+          const segs = [...o.progress.segs, ...o.pos.segs, ...o.scale.segs, ...o.opacity.segs, ...o.rot.segs];
           return (
             <div key={o.id} className={`relative border-b border-border/50 ${o.id === p.selectedId ? "bg-primary/5" : ""}`} style={{ height: ROW_H }} onPointerDown={() => p.onSelect(o.id)}>
-              <div className="absolute top-[11px] h-1 rounded-full bg-muted-foreground/30" style={{ left: o.start * PX, width: (o.end - o.start) * PX }} />
-              {segs.map((s, k) => segBlock(o.id, s, k))}
+              <div
+                title="Drag to change when this starts"
+                className={`absolute top-[8px] h-2.5 cursor-grab rounded-full bg-muted-foreground/30 hover:bg-muted-foreground/50 ${shift?.key === o.id + ":life" ? "ring-2 ring-primary" : ""}`}
+                style={{ left: (shift?.key === o.id + ":life" ? shift.nt : o.start) * PX, width: (o.end - o.start) * PX }}
+                {...shiftHandlers(o.id + ":life", o.start, objInfo(o), () => p.onSelect(o.id))}
+              />
+              {segs.map((s, k) => segBlock(o.id, s, k, () => p.onSelect(o.id)))}
             </div>
           );
         })}
