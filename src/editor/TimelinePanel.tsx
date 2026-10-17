@@ -2,7 +2,7 @@ import { useRef, useState, type PointerEvent as RPE } from "react";
 import type { Span } from "@/lang/parser";
 import type { Seg, Timeline, TObj } from "@/lang/timeline";
 
-export interface StartInfo { base: number; delaySpan?: Span | undefined; hasDelay?: boolean; lineEnd: number }
+export interface StartInfo { base: number; delaySpan?: Span | undefined; hasDelay?: boolean | undefined; lineEnd: number }
 
 interface Props {
   timeline: Timeline;

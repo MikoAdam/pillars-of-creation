@@ -170,7 +170,7 @@ export function removeFx(code: string, o: TObj, which: "enter" | "exit"): string
 }
 
 /** Dragging a timeline block: make a line start at newStart by editing or adding its delay. */
-export function writeStart(code: string, info: { base: number; delaySpan?: Span | undefined; hasDelay?: boolean; lineEnd: number }, newStart: number): string {
+export function writeStart(code: string, info: { base: number; delaySpan?: Span | undefined; hasDelay?: boolean | undefined; lineEnd: number }, newStart: number): string {
   const d = Math.max(0, Math.round((newStart - info.base) * 10) / 10);
   if (info.delaySpan) return applyEdits(code, [{ span: info.delaySpan, text: durText(code, info.delaySpan, d) }]);
   if (info.hasDelay) return code; // delay is an expression: leave it alone

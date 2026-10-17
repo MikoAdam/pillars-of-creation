@@ -130,7 +130,7 @@ export function sample(track: Track, t: number, linear = false): number[] {
     if (t >= s.t1) v = s.to;
     else {
       const p = (t - s.t0) / Math.max(1e-6, s.t1 - s.t0);
-      const e = linear ? p : (EASES[s.ease ?? "smooth"] ?? EASES.smooth)(p);
+      const e = linear ? p : (EASES[s.ease ?? "smooth"] ?? EASES["smooth"])(p);
       v = s.from.map((f, i) => f + (s.to[i] - f) * e);
       if (s.curve && v.length === 2) {
         const dx = s.to[0] - s.from[0], dy = s.to[1] - s.from[1];
