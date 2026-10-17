@@ -167,7 +167,10 @@ export function Stage(p: Props) {
     const asset = e.dataTransfer.getData("application/x-asset");
     if (asset) return p.onDropAsset(asset);
     const el = e.dataTransfer.getData("application/x-element");
-    if (el) return p.onInsert(el.replace("{x}", String(r10(m.sx))).replace("{y}", String(r10(m.sy))));
+    if (el) {
+      const v: Record<string, number> = { x: r10(m.sx), y: r10(m.sy), x2: r10(m.sx + 260), y2: r10(m.sy - 140) };
+      return p.onInsert(el.replace(/\{(x2|y2|x|y)\}/g, (_s, k: string) => String(v[k])));
+    }
     const cmd = e.dataTransfer.getData("application/x-cmd");
     if (cmd) return p.onInsert(cmd);
     const fx = e.dataTransfer.getData("application/x-fx");
