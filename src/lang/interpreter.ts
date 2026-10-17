@@ -227,7 +227,16 @@ export function interpret(src: string): Timeline {
     bump(seg.t1);
   }
 
+  /** each new scene starts with the camera back at rest */
+  function resetCamera(at: number) {
+    const c = tl.camera;
+    const meta = { line: -1, col: 0, toSpans: [], label: "camera reset", base: at, hasDelay: false, lineEnd: 0 };
+    if (c.pos.segs.length) addSeg(c.pos, { t0: at, t1: at, from: [960, 540], to: [960, 540], ...meta });
+    if (c.zoom.segs.length) addSeg(c.zoom, { t0: at, t1: at, from: [1], to: [1], ...meta });
+  }
+
   function endScene(at: number, trans?: Trans) {
+    resetCamera(trans ? at + trans.d : at);
     for (const o of tl.objects) if (o.end === Infinity) {
       o.end = trans ? at + trans.d : at;
       if (trans) o.exit = trans;
