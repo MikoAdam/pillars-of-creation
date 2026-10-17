@@ -316,7 +316,7 @@ export function interpret(src: string): Timeline {
       case "whip":
       case "blur": {
         const d = src(0) ? num(src(0), "a duration", near).v : 0.5;
-        const tr: Trans = { t: start, d, kind: s.name };
+        const tr: Trans = { t: start, d, kind: s.name as Trans["kind"] };
         endScene(start, tr);
         pendingEnter = tr;
         tl.transitions.push(tr);
@@ -506,7 +506,7 @@ export function interpret(src: string): Timeline {
         const amt = src(1) ? num(src(1), "an amount", src(0)!).v : s.name === "pulse" ? 0.15 : 8;
         const overG = kw1(p, "over");
         const d = overG ? num(overG[1], "duration", overG[0]).v : 0.6;
-        o.pulses.push({ t0: start, t1: start + d, amt, kind: s.name });
+        o.pulses.push({ t0: start, t1: start + d, amt, kind: s.name as "pulse" | "wiggle" });
         o.lines.push(s.line);
         bump(start + d);
         return;
