@@ -1,15 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2 } from "lucide-react";
-import { run, THEME_NAMES } from "@/lang/interpreter";
+import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video } from "lucide-react";
+import { run } from "@/lang/interpreter";
 import { styleValues, type Timeline, type TObj } from "@/lang/timeline";
-import { insertAtTime, resetStyle, setStyle, setTheme, writeMove, writeOver, writeScale } from "@/lang/writeback";
+import { insertAtTime, removeFx, resetStyle, setStyle, writeFx, writeMove, writeOver, writeProp, writeScale, writeStart } from "@/lang/writeback";
+import { Library, Inspector } from "@/editor/Library";
 import { applyStyle, getTheme, THEMES } from "@/render/theme";
 import { StylePanel } from "@/editor/StylePanel";
 import { loadFonts } from "@/render/assets";
 import type { Assets } from "@/render/types";
 import { CodeEditor } from "@/editor/CodeEditor";
-import { Stage, type Tool } from "@/editor/Stage";
+import { Stage, type FxDrop, type Tool } from "@/editor/Stage";
 import { TimelinePanel } from "@/editor/TimelinePanel";
 import { MediaBin } from "@/editor/MediaBin";
 import { SAMPLE_CODE } from "@/editor/sampleCode";
@@ -38,24 +39,20 @@ const TOOLS: { id: Tool; icon: typeof Type; label: string; key: string }[] = [
   { id: "circle", icon: Circle, label: "Circle", key: "c" },
   { id: "box", icon: Square, label: "Box", key: "b" },
   { id: "highlight", icon: Highlighter, label: "Highlighter", key: "h" },
+  { id: "camera", icon: Video, label: "Camera: draw a frame to zoom to", key: "k" },
 ];
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}.${Math.floor((s % 1) * 10)}`;
-const THEME_BY_ID = Object.fromEntries(Object.entries(THEME_NAMES).map(([k, v]) => [v, k]));
 
 function Studio() {
   const hist = useHistory(SAMPLE_CODE);
   const { code } = hist;
   const [timeline, setTimeline] = useState<Timeline>(() => {
     const r = run(SAMPLE_CODE);
-    return r.ok ? r.timeline : { title: "", themeId: "clean-modern", style: {}, duration: 1, objects: [], stmts: [], transitions: [] };
+    return r.ok ? r.timeline : { title: "", themeId: "clean-modern", style: {}, duration: 1, objects: [], stmts: [], transitions: [], camera: { pos: { base: [960, 540], segs: [] }, zoom: { base: [1], segs: [] }, shakes: [] } };
   });
-  const [ui, setUi] = useState("pro");
-  useEffect(() => { const v = localStorage.getItem("pnt:ui"); if (v) setUi(v); }, []);
-  useEffect(() => {
-    if (ui === "pro") delete document.documentElement.dataset["ui"]; else document.documentElement.dataset["ui"] = ui;
-    try { localStorage.setItem("pnt:ui", ui); } catch { /* ignore */ }
-  }, [ui]);
+  useEffect(() => { document.documentElement.dataset["ui"] = "clean"; }, []);
+  const [previewOpacity, setPreviewOpacity] = useState<number | undefined>(undefined);
   const [error, setError] = useState<{ line: number; col: number; len: number; message: string } | null>(null);
   const [t, setT] = useState(0);
   const tRef = useRef(0);
@@ -152,6 +149,15 @@ function Studio() {
   const onMove = (o: TObj, x: number, y: number) => hand(writeMove(hist.codeRef.current, timeline, o, t, x, y));
   const onScale = (o: TObj, s: number) => hand(writeScale(hist.codeRef.current, timeline, o, t, s));
   const onInsert = (cmd: string) => hand(insertAtTime(hist.codeRef.current, timeline, t, cmd).code);
+  const onInsertCenter = (cmd: string) => onInsert(cmd.replace("{x2}", "1220").replace("{y2}", "400").replace("{x}", "960").replace("{y}", "540"));
+  const onRotate = (o: TObj, deg: number) => hand(writeProp(hist.codeRef.current, timeline, o, t, "rot", deg));
+  const onOpacity = (o: TObj, v: number) => hand(writeProp(hist.codeRef.current, timeline, o, t, "opacity", v));
+  const onFx = (o: TObj, f: FxDrop) => {
+    const c = hist.codeRef.current;
+    if (f.kind === "pulse" || f.kind === "wiggle") return onInsert(`${f.kind} ${o.id} over 0.6s`);
+    hand(writeFx(c, o, f.kind, f.style ?? "pop"));
+  };
+  const selectedObj = timeline.objects.find((o) => o.id === selectedId);
   const insertPhoto = (name: string) => {
     const taken = timeline.objects.map((o) => o.id);
     const id = uniqueName(name, taken);
@@ -219,13 +225,6 @@ function Studio() {
             <option value="" disabled>Load demo…</option>
             {DEMOS.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
-          <select
-            value={THEME_BY_ID[timeline.themeId]}
-            onChange={(e) => hand(setTheme(hist.codeRef.current, timeline, e.target.value))}
-            className="rounded-md border border-border bg-secondary px-2 py-1 text-foreground"
-          >
-            {THEMES.map((th) => <option key={th.id} value={THEME_BY_ID[th.id]}>{th.name}</option>)}
-          </select>
           <StylePanel
             base={baseTheme}
             theme={theme}
@@ -233,12 +232,6 @@ function Studio() {
             onSet={(k, v) => { const next = setStyle(hist.codeRef.current, timeline, k, v); if (next !== hist.codeRef.current) hist.setTyped(next); }}
             onReset={(k) => hand(resetStyle(hist.codeRef.current, timeline, k))}
           />
-          <select value={ui} onChange={(e) => setUi(e.target.value)} title="Studio look" className="rounded-md border border-border bg-secondary px-2 py-1 text-foreground">
-            <option value="pro">Studio: Professional</option>
-            <option value="clean">Studio: Clean Modern</option>
-            <option value="soft">Studio: Soft Rounded</option>
-            <option value="editorial">Studio: Warm Editorial</option>
-          </select>
           <Link to="/preview" className="text-muted-foreground hover:text-foreground">Scene preview</Link>
         </div>
       </header>
@@ -267,7 +260,10 @@ function Studio() {
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col">
-          <div className="flex min-h-0 flex-1 gap-3 p-4">
+          <div className="px-4 pt-3">
+            <Library selected={selectedObj} onInsert={onInsert} onInsertCenter={onInsertCenter} onFx={onFx} onNotice={setNotice} />
+          </div>
+          <div className="flex min-h-0 flex-1 gap-3 px-4 pb-3 pt-3">
             <div className="flex shrink-0 flex-col gap-1 self-start rounded-md border border-border bg-card p-1">
               {TOOLS.map((tl) => (
                 <button
@@ -281,7 +277,7 @@ function Studio() {
               ))}
             </div>
             <div className="flex min-w-0 flex-1 flex-col items-center justify-center">
-              <div className="w-full max-w-[min(100%,calc((100vh-360px)*16/9))]">
+              <div className="w-full max-w-[min(100%,calc((100vh-440px)*16/9))]">
                 <Stage
                   timeline={timeline}
                   theme={theme}
@@ -292,6 +288,10 @@ function Studio() {
                   onSelect={setSelectedId}
                   onMove={onMove}
                   onScale={onScale}
+                  onRotate={onRotate}
+                  onFx={onFx}
+                  onNotice={setNotice}
+                  previewOpacity={previewOpacity}
                   onInsert={onInsert}
                   onDropFiles={(f) => void onDropFiles(f)}
                   onDropAsset={insertPhoto}
@@ -304,6 +304,18 @@ function Studio() {
                   <input type="range" min={0} max={total} step={1 / 30} value={Math.min(t, total)} onChange={(e) => seek(Number(e.target.value))} className="flex-1 accent-primary" />
                   <span className="w-28 text-right font-mono text-xs tabular-nums text-muted-foreground">{fmt(t)} / {fmt(total)}</span>
                 </div>
+                {selectedObj && (
+                  <div className="mt-2">
+                    <Inspector
+                      o={selectedObj}
+                      t={t}
+                      onFx={(w, st) => hand(st ? writeFx(hist.codeRef.current, selectedObj, w, st) : removeFx(hist.codeRef.current, selectedObj, w))}
+                      onRotate={(d) => onRotate(selectedObj, d)}
+                      onOpacity={(v) => onOpacity(selectedObj, v)}
+                      onPreviewOpacity={setPreviewOpacity}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -315,6 +327,7 @@ function Studio() {
               onSeek={seek}
               onSelect={setSelectedId}
               onOver={(span, d) => hand(writeOver(hist.codeRef.current, span, d))}
+              onStart={(info, s0) => hand(writeStart(hist.codeRef.current, info, s0))}
             />
           </div>
         </section>
