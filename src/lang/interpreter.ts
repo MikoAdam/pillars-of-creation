@@ -1,12 +1,10 @@
 import { LangError } from "./lexer";
 import { FONT_CHOICES } from "@/render/theme";
 import { parse, type Arg, type Expr, type Span, type Stmt } from "./parser";
-import { addSeg, sample, type ObjKind, type Seg, type TObj, type Timeline, type Track, type Trans } from "./timeline";
+import { addSeg, emptyCamera, sample, EASES, EASE_NAMES, FX_STYLES, type FxStyle, type ObjKind, type Seg, type TObj, type Timeline, type Track, type Trans } from "./timeline";
 
 export const THEME_NAMES: Record<string, string> = {
   clean_modern: "clean-modern",
-  warm_editorial: "warm-editorial",
-  bold_night: "bold-night",
 };
 
 export const STYLE_KEYS = ["background", "text", "accent", "display", "body", "radius", "grain", "caps"] as const;
@@ -15,7 +13,7 @@ export type StyleKey = (typeof STYLE_KEYS)[number];
 export const COMMANDS = [
   "project", "style", "show", "zoom", "scale", "move", "fade", "caption", "source", "unverified", "wait",
   "cut", "crossfade", "slide", "count", "bars", "line", "headline", "say", "arrow", "circle", "box",
-  "highlight", "let", "repeat", "for", "end",
+  "highlight", "rotate", "camera", "shake", "pulse", "wiggle", "wipe", "push", "whip", "blur", "let", "repeat", "for", "end",
 ];
 
 export type RunResult =
@@ -30,7 +28,8 @@ const W = 1920, H = 1080;
 
 /** Per-command keyword arity. Words not listed are positional. */
 const KW: Record<string, Record<string, number>> = {
-  _common: { over: 1, as: 1, delay: 1, scale: 1 },
+  _common: { over: 1, as: 1, delay: 1, scale: 1, enter: 1, exit: 1, rotate: 1, ease: 1, curve: 1, opacity: 1 },
+  camera: { to: 2, zoom: 1 },
   show: { at: 2, vignette: 1 },
   count: { unit: 1, prefix: 1, suffix: 1, label: 1, at: 2 },
   bars: { unit: 1, at: 2 },
@@ -62,7 +61,7 @@ export function run(src: string): RunResult {
 
 export function interpret(src: string): Timeline {
   const prog = parse(src);
-  const tl: Timeline = { title: "Untitled", themeId: "clean-modern", style: {}, duration: 0, objects: [], stmts: [], transitions: [] };
+  const tl: Timeline = { title: "Untitled", themeId: "clean-modern", style: {}, duration: 0, objects: [], stmts: [], transitions: [], camera: emptyCamera() };
   const vars = new Map<string, number>();
   const objs = new Map<string, TObj>();
   const counters: Record<string, number> = {};
@@ -70,6 +69,7 @@ export function interpret(src: string): Timeline {
   let maxT = 0;
   let iter = 0;
   let pendingEnter: Trans | undefined;
+  let curBase = 0, curDelaySpan: Span | undefined, curHasDelay = false, curLineEnd = 0;
   const bump = (t: number) => { if (t > maxT) maxT = t; };
 
   const err = (msg: string, a: { tok: { line: number; col: number; text: string } }) => {
@@ -167,16 +167,30 @@ export function interpret(src: string): Timeline {
       sc = s.v;
       createSpans.scale = s.span;
     }
+    let rot = 0, opa = 1;
+    const rG = kw1(p, "rotate");
+    if (rG) { const r = num(rG[1], "degrees", rG[0]); rot = r.v; createSpans.rotate = r.span; }
+    const oG = kw1(p, "opacity");
+    if (oG) { const r = num(oG[1], "opacity 0..1", oG[0]); opa = Math.min(1, Math.max(0, r.v)); createSpans.opacity = r.span; }
+    createSpans.delay = curDelaySpan;
+    createSpans.hasDelay = curHasDelay;
+    const fx = (k: "enter" | "exit") => {
+      const g = kw1(p, k);
+      if (!g) return undefined;
+      const st = word(g[1], `an ${k} style`, g[0]) as FxStyle;
+      if (!FX_STYLES.includes(st)) err(`Unknown ${k} style "${st}". Use ${FX_STYLES.join(", ")}`, g[1]);
+      return { style: st, d: 0.6, span: [g[1].tok.start, g[1].tok.end] as Span };
+    };
     const o: TObj = {
-      id, kind, start, end: Infinity, origin, pos: track(pos), scale: track([sc]), opacity: track([1]),
+      id, kind, start, end: Infinity, origin, pos: track(pos), scale: track([sc]), opacity: track([opa]), rot: track([rot]),
       progress: track([1]), data, lines: [stmt.line], createLine: stmt.line, createLineEnd: stmt.ll.contentEnd,
-      createSpans, box,
+      createSpans, box, base: curBase, enterFx: fx("enter"), exitFx: fx("exit"), pulses: [],
     };
     const overG = kw1(p, "over");
     if (overG) {
       const d = num(overG[1], "duration", overG[0]);
       o.progress = track([0]);
-      addSeg(o.progress, { t0: start, t1: start + Math.max(0, d.v), from: [0], to: [1], line: stmt.line, col: overG[0].tok.col, toSpans: [], overSpan: d.span, label: "build" });
+      addSeg(o.progress, { t0: start, t1: start + Math.max(0, d.v), from: [0], to: [1], line: stmt.line, col: overG[0].tok.col, toSpans: [], overSpan: d.span, label: "build", ...segMeta(p) });
       bump(start + d.v);
     }
     if (pendingEnter && start < pendingEnter.t + pendingEnter.d) o.enter = pendingEnter;
@@ -186,14 +200,26 @@ export function interpret(src: string): Timeline {
     return o;
   }
 
-  function animate(o: TObj, which: "pos" | "scale" | "opacity", to: NumV[], p: Parsed, stmt: Extract<Stmt, { kind: "cmd" }>, start: number, from?: number[]) {
+  function segMeta(p: Parsed) {
+    const eG = kw1(p, "ease");
+    let ease: string | undefined;
+    if (eG) {
+      ease = word(eG[1], "an ease name", eG[0]);
+      if (!EASES[ease]) err(`Unknown ease "${ease}". Use ${EASE_NAMES.join(", ")}`, eG[1]);
+    }
+    const cG = kw1(p, "curve");
+    const curve = cG ? num(cG[1], "a curve amount", cG[0]).v : undefined;
+    return { ease, curve, base: curBase, delaySpan: curDelaySpan, hasDelay: curHasDelay, lineEnd: curLineEnd };
+  }
+
+  function animate(o: TObj, which: "pos" | "scale" | "opacity" | "rot", to: NumV[], p: Parsed, stmt: Extract<Stmt, { kind: "cmd" }>, start: number, from?: number[]) {
     const overG = kw1(p, "over");
     const d = overG ? num(overG[1], "duration", overG[0]) : { v: 0 };
     const tr = o[which];
     const f = from ?? sample(tr, start);
     const seg: Seg = {
       t0: start, t1: start + Math.max(0, d.v), from: f, to: to.map((x) => x.v), line: stmt.line, col: stmt.nameTok.col,
-      toSpans: to.map((x) => x.span), overSpan: d.span, label: stmt.name,
+      toSpans: to.map((x) => x.span), overSpan: d.span, label: stmt.name, ...segMeta(p),
     };
     if (from) tr.base = from;
     addSeg(tr, seg);
@@ -234,7 +260,9 @@ export function interpret(src: string): Timeline {
     const p = split(s.name, s.args);
     const near = { tok: s.nameTok };
     const delayG = kw1(p, "delay");
-    const start = cursor + (delayG ? Math.max(0, num(delayG[1], "delay", delayG[0]).v) : 0);
+    const dv = delayG ? num(delayG[1], "delay", delayG[0]) : undefined;
+    const start = cursor + (dv ? Math.max(0, dv.v) : 0);
+    curBase = cursor; curDelaySpan = dv?.span; curHasDelay = !!delayG; curLineEnd = s.ll.contentEnd;
     const src = (pAt: number) => p.pos[pAt];
 
     switch (s.name) {
@@ -282,7 +310,11 @@ export function interpret(src: string): Timeline {
       }
       case "cut": endScene(start); pendingEnter = undefined; tl.transitions.push({ t: start, d: 0, kind: "cut" }); return;
       case "crossfade":
-      case "slide": {
+      case "slide":
+      case "wipe":
+      case "push":
+      case "whip":
+      case "blur": {
         const d = src(0) ? num(src(0), "a duration", near).v : 0.5;
         const tr: Trans = { t: start, d, kind: s.name };
         endScene(start, tr);
@@ -438,6 +470,45 @@ export function interpret(src: string): Timeline {
       case "scale": {
         const o = getObj(src(0), near);
         animate(o, "scale", [num(src(1), "a scale", src(0)!)], p, s, start);
+        return;
+      }
+      case "rotate": {
+        const o = getObj(src(0), near);
+        animate(o, "rot", [num(src(1), "degrees", src(0)!)], p, s, start);
+        return;
+      }
+      case "camera": {
+        const tg = kw1(p, "to"), zg = kw1(p, "zoom");
+        if (!tg && !zg) err('camera needs "to x y" and/or "zoom k"', near);
+        const cam = tl.camera;
+        const mk = (tr: Track, to: NumV[]) => {
+          const overG = kw1(p, "over");
+          const d = overG ? num(overG[1], "duration", overG[0]) : { v: 0, span: undefined };
+          addSeg(tr, { t0: start, t1: start + Math.max(0, d.v), from: sample(tr, start), to: to.map((x) => x.v), line: s.line, col: s.nameTok.col,
+            toSpans: to.map((x) => x.span), overSpan: d.span, label: "camera", ...segMeta(p) });
+          bump(start + d.v);
+        };
+        if (tg) mk(cam.pos, [num(tg[1], "x", tg[0]), num(tg[2], "y", tg[0])]);
+        if (zg) mk(cam.zoom, [num(zg[1], "zoom", zg[0])]);
+        return;
+      }
+      case "shake": {
+        const amt = src(0) ? num(src(0), "a shake amount", near).v : 20;
+        const overG = kw1(p, "over");
+        const d = overG ? num(overG[1], "duration", overG[0]).v : 0.5;
+        tl.camera.shakes.push({ t0: start, t1: start + d, amt });
+        bump(start + d);
+        return;
+      }
+      case "pulse":
+      case "wiggle": {
+        const o = getObj(src(0), near);
+        const amt = src(1) ? num(src(1), "an amount", src(0)!).v : s.name === "pulse" ? 0.15 : 8;
+        const overG = kw1(p, "over");
+        const d = overG ? num(overG[1], "duration", overG[0]).v : 0.6;
+        o.pulses.push({ t0: start, t1: start + d, amt, kind: s.name });
+        o.lines.push(s.line);
+        bump(start + d);
         return;
       }
       case "fade": {
