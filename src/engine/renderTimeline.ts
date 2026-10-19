@@ -9,7 +9,7 @@ import { renderHeadline } from "@/render/scenes/headlineHighlight";
 import { renderKineticText } from "@/render/scenes/kineticText";
 import { alpha, bodyFont, fillRound } from "@/render/theme";
 import { wrapText } from "@/render/text";
-import { renderMap, drawAttack, drawRoute, drawPin, drawBubble, drawPlace, drawTag, drawYear, drawLegend, type MapFill } from "@/render/scenes/map";
+import { renderMap, drawAttack, drawRoute, drawPin, drawBubble, drawPlace, drawTag, drawYear, drawLegend, drawEffect } from "@/render/scenes/map";
 import { anchorAt, geoEnds, mapCamAt, alive, cameraAt, EASES, sample, type Fx, type TObj, type Timeline, type Trans } from "@/lang/timeline";
 
 export interface Override {
@@ -305,10 +305,4 @@ function drawBox(ctx: CanvasRenderingContext2D, c: number[], w: number, h: numbe
     remain -= len;
   }
   ctx.stroke();
-}
-
-/** Legend rows come straight from the timeline (auto legends are snapshotted by the interpreter). */
-function legendEntries(d: any, t: number) {
-  void t;
-  return d.entries as { label: string; color: string; t0: number }[];
 }
