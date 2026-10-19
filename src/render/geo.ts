@@ -120,10 +120,14 @@ export function setGeoData(kind: GeoKind, json: unknown) {
   store[kind] = build(kind, json);
 }
 
-/** Fetch the outlines once (browser). */
+import regionsAsset from "@/assets/geo-regions.json.asset.json";
+
+/** Fetch the outlines once (browser). Regions ship as a CDN asset (>10 MB). */
 export function loadGeo(kind: GeoKind): Promise<void> {
   if (store[kind]) return Promise.resolve();
-  pending[kind] ??= fetch(`/geo/${kind}.json`).then((r) => r.json()).then((j) => setGeoData(kind, j));
+  pending[kind] ??= fetch(kind === "regions" ? regionsAsset.url : `/geo/${kind}.json`)
+    .then((r) => r.json())
+    .then((j) => setGeoData(kind, j));
   return pending[kind]!;
 }
 
