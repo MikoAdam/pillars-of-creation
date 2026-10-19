@@ -674,6 +674,21 @@ export function interpret(src: string): Timeline {
       case "fly": {
         const m = needMap(s);
         const cam = m.data.cam;
+        if (s.legacy) {
+          // fly: LAT, LNG, ZOOM — smooth flyTo, blocks the script for 1.2s
+          const lat = A[0] && (A[0].kind === "num" || A[0].kind === "expr") ? num(A[0], "latitude", near).v : NaN;
+          const lng = A[1] && (A[1].kind === "num" || A[1].kind === "expr") ? num(A[1], "longitude", A[0]).v : NaN;
+          const z = A[2] && (A[2].kind === "num" || A[2].kind === "expr") ? num(A[2], "zoom", A[1] ?? near).v : NaN;
+          if (Number.isNaN(lat) || Number.isNaN(lng) || Number.isNaN(z)) return true; // original silently skips
+          camSeg(cam.pos, [{ v: lat }, { v: lng }], p, s, start, { v: 1.2 }, "smooth");
+          camSeg(cam.zoom, [{ v: z }], p, s, start, { v: 1.2 }, "smooth");
+          camSeg(cam.tilt, [{ v: 0 }], p, s, start, { v: 1.2 }, "smooth");
+          camSeg(cam.turn, [{ v: 0 }], p, s, start, { v: 1.2 }, "smooth");
+          cursor = Math.max(cursor, start + 1.2);
+          bump(cursor);
+          m.lines.push(s.line);
+          return true;
+        }
         const overG = kw1(p, "over");
         const d = overG ? num(overG[1], "duration", overG[0]) : { v: 1.5 };
         let any = false;
