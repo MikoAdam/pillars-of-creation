@@ -129,13 +129,14 @@ export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapC
   }
 
   if (labels) {
+    const coloured = new Set(fills.filter((f) => f.feature && t >= f.t0 && t < f.end).map((f) => f.feature));
     ctx.font = bodyFont(theme, 22, 600);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     for (const f of countries) {
       const b = boxes.get(f)!;
       const w = b[2] - b[0];
-      if (!visible(b) || w < 150) continue;
+      if (!visible(b) || w < 150 || coloured.has(f)) continue;
       const [x, y] = pr.point(...f.center);
       if (x < 40 || x > 1880 || y < 30 || y > 1050) continue;
       const name = f.name.toUpperCase();
