@@ -904,23 +904,27 @@ export function interpret(src: string): Timeline {
         const text = str(A[0], "a year or date", near);
         const hl = A[1]?.kind === "word" && A[1].name === "highlight";
         if (yearObj && yearObj.end === Infinity) yearObj.end = start;
-        const w = text.length * 44 + 72;
-        yearObj = makeObj("year", p, s, start, [60, 50], [60, 50, w, 112], { text, highlight: hl });
-        yearObj.pos.base = [60, 50];
+        // pill badge, 28 CSS px font, padding 14/32 → top-left at 32,32 in the frame
+        const w = text.length * 22 + 100, h = 74;
+        yearObj = makeObj("year", p, s, start, [32, 32], [32, 32, w, h], { text, highlight: hl });
+        yearObj.pos.base = [32, 32];
         return true;
       }
       case "legend": {
         const a = A[0];
         if (a?.kind === "word" && a.name === "hide") { if (legendObj && legendObj.end === Infinity) legendObj.end = start; legendObj = undefined; return true; }
         if (!legendObj) {
-          legendObj = makeObj("legend", p, s, start, [60, H - 60], [60, H - 300, 420, 240], { entries: [], auto: false, map: curMap });
-          legendObj.pos.base = [60, H - 60];
+          // card hangs from the top-right corner
+          legendObj = makeObj("legend", p, s, start, [W - 19, 19], [W - 460, 19, 440, 260], { entries: [], auto: false, map: curMap });
+          legendObj.pos.base = [W - 19, 19];
         } else legendObj.lines.push(s.line);
         if (a?.kind === "word" && a.name === "auto") { legendObj.data.auto = true; legendObj.data.autoFrom = start; return true; }
         const label = str(a, 'a legend label, or auto / hide', near);
-        legendObj.data.entries.push({ label, color: color(A[1], s), t0: start });
+        legendObj.data.entries.push({ label, color: color(A[1], s, MAP_COLORS["blue"]), t0: start });
         const n = legendObj.data.entries.length;
-        legendObj.box = [60, H - 60 - (n * 46 + 36), Math.max(260, Math.max(...legendObj.data.entries.map((e: any) => e.label.length * 16 + 100))), n * 46 + 36];
+        const w = Math.max(160, ...legendObj.data.entries.map((e: any) => e.label.length * 10 + 64));
+        const h = n * 34 + 32;
+        legendObj.box = [W - 19 - w, 19, w, h];
         return true;
       }
       case "remove": {
@@ -929,15 +933,106 @@ export function interpret(src: string): Timeline {
         const isFill = (x: any): x is MapFill & { line: number } => !("kind" in x);
         const live = mapElems.filter((x) => x.end === Infinity);
         const kill = (x: (typeof mapElems)[number]) => { x.end = start; };
-        if (what === "last") { const x = live[live.length - 1]; if (x) kill(x); }
+        if (what === "last") {
+          if (s.legacy) {
+            // the original removes the last placed marker only (labels, bubbles, tags, effects)
+            for (let k = markerStack.length - 1; k >= 0; k--) if (markerStack[k].end === Infinity) { kill(markerStack[k]); break; }
+          } else { const x = live[live.length - 1]; if (x) kill(x); }
+        }
         for (const x of live) {
           if (isFill(x)) { if (what === "colors" || what === "all") kill(x); continue; }
           const k = x.kind;
-          if ((what === "arrows" && (k === "attack" || k === "route")) || (what === "pins" && k === "pin") ||
+          if ((what === "arrows" && k === "attack") || (what === "lines" && k === "route") ||
+            ((what === "pins" || what === "effects") && (k === "pin" || k === "effect")) ||
             (what === "labels" && (k === "bubble" || k === "label" || k === "tag")) || what === "all") kill(x);
         }
         if ((what === "legend" || what === "all") && legendObj) { legendObj.end = start; legendObj = undefined; }
         if ((what === "year" || what === "all") && yearObj) { yearObj.end = start; yearObj = undefined; }
+        return true;
+      }
+      case "effect": {
+        const lat = num(A[0], "latitude", near), lng = num(A[1], "longitude", A[0] ?? near);
+        const sym = word(A[2], "an effect name", A[1] ?? near).toLowerCase();
+        if (!EFFECTS[sym]) {
+          if (s.legacy) return true; // the original silently skips unknown effects
+          err(`Unknown effect "${sym}". Use ${Object.keys(EFFECTS).join(", ")}`, A[2]);
+        }
+        const col = A[3] ? color(A[3], s, MAP_COLORS["red"]) : MAP_COLORS["red"];
+        const size = A[4] ? num(A[4], "a size", A[3] ?? near).v : 1.5;
+        const r = 32 * size;
+        const o = geoObj("effect", p, s, start, { lat: lat.v, lng: lng.v, symbol: sym, color: col, size, rel: [-r, -r, 2 * r, 2 * r] });
+        o.createSpans.at = [lat.span, lng.span];
+        return true;
+      }
+      case "cinematic": {
+        const m = needMap(s);
+        const numAt = (k: number) => (A[k] && (A[k]!.kind === "num" || A[k]!.kind === "expr") ? num(A[k]!, "a number", near).v : NaN);
+        const lat = numAt(0), lng = numAt(1), z = numAt(2);
+        if (Number.isNaN(lat) || Number.isNaN(lng) || Number.isNaN(z)) return true; // the original silently skips
+        let pitch = numAt(3);
+        if (Number.isNaN(pitch)) pitch = 30;
+        pitch = pitch === 0 ? 30 : Math.min(30, Math.max(0, pitch));
+        const bearing = Number.isNaN(numAt(4)) ? 0 : numAt(4);
+        const cam = m.data.cam;
+        camSeg(cam.pos, [{ v: lat }, { v: lng }], p, s, start, { v: 2 }, "smooth");
+        camSeg(cam.zoom, [{ v: z }], p, s, start, { v: 2 }, "smooth");
+        camSeg(cam.tilt, [{ v: pitch }], p, s, start, { v: 2 }, "smooth");
+        camSeg(cam.turn, [{ v: bearing }], p, s, start, { v: 2 }, "smooth");
+        cursor = Math.max(cursor, start + 2);
+        bump(cursor);
+        m.lines.push(s.line);
+        return true;
+      }
+      case "clear": {
+        const m = needMap(s);
+        if (!geoReady("countries")) { needGeo.add("countries"); return true; }
+        if (!A[0]) return true;
+        const f = country(A[0], s);
+        if (!f) return true; // silently skips unknown names
+        const nn = normName(f.name);
+        for (const x of m.data.fills as (MapFill & { line: number })[]) {
+          if (x.end === Infinity && x.feature && (normName(x.feature.name) === nn || normName(x.feature.sovereign ?? "") === nn)) x.end = start;
+        }
+        m.lines.push(s.line);
+        return true;
+      }
+      case "clearregions": {
+        const m = needMap(s);
+        if (!geoReady("countries")) { needGeo.add("countries"); return true; }
+        if (!A[0]) return true;
+        const f = country(A[0], s);
+        if (!f) return true;
+        const nn = normName(f.name);
+        for (const x of m.data.fills as (MapFill & { line: number; isRegion?: boolean })[]) {
+          if (x.end === Infinity && x.isRegion && x.feature && (normName(x.feature.country ?? "") === nn || normName(x.feature.sovereign ?? "") === nn)) x.end = start;
+        }
+        m.lines.push(s.line);
+        return true;
+      }
+      case "rename": {
+        const m = needMap(s);
+        if (!geoReady("countries")) { needGeo.add("countries"); return true; }
+        if (!A[0]) err("rename needs a country and a label, e.g. rename britain \"United Kingdom\"", near);
+        const f = country(A[0], s);
+        if (!f) return true;
+        const text = str(A[1], "a label", near);
+        const ag = kw1(p, "at");
+        const at: [number, number] | undefined = ag ? [num(ag[2], "longitude", ag[0]).v, num(ag[1], "latitude", ag[0]).v] : undefined;
+        const renames: any[] = (m.data.renames ??= []);
+        const prev = renames.find((r) => r.name === f!.name && r.end === Infinity);
+        if (prev) prev.end = start;
+        renames.push({ name: f!.name, text, at, t0: start, end: Infinity, line: s.line });
+        m.lines.push(s.line);
+        return true;
+      }
+      case "unrename": {
+        const m = needMap(s);
+        if (!geoReady("countries")) { needGeo.add("countries"); return true; }
+        if (!A[0]) return true;
+        const f = country(A[0], s);
+        if (!f) return true;
+        for (const r of (m.data.renames ?? []) as any[]) if (r.name === f.name && r.end === Infinity) r.end = start;
+        m.lines.push(s.line);
         return true;
       }
     }
