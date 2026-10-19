@@ -16,6 +16,8 @@ export interface GeoFeature {
   keys: string[];
   /** owning country (regions only), lower-case */
   country?: string;
+  /** Natural Earth ADMIN of the country (countries only), lower-case */
+  admin?: string;
   /** sovereign of the country (countries only), lower-case */
   sovereign?: string;
   /** Natural Earth TYPE, e.g. "Sovereign country", "Country", "Dependency" */
@@ -79,6 +81,7 @@ function build(kind: GeoKind, json: any): GeoFeature[] {
       const pop = Number(p.POP_EST);
       out.push({
         name, keys, rings, bbox: [minX, minY, maxX, maxY], center,
+        admin: p.ADMIN ? fold(String(p.ADMIN)) : undefined,
         sovereign: p.SOVEREIGNT ? fold(String(p.SOVEREIGNT)) : undefined,
         type: p.TYPE ? String(p.TYPE) : undefined,
         pop: Number.isFinite(pop) ? pop : undefined,
@@ -236,7 +239,8 @@ export function territoriesOf(feature: GeoFeature): GeoFeature[] {
   return geoFeatures("countries").filter((f) => {
     if (f === feature) return false;
     if (f.sovereign !== feature.sovereign) return false;
-    if (f.name === feature.sovereign || f.keys.includes(feature.sovereign)) return false;
+    // exclude the sovereign itself: its ADMIN is the sovereign name (a territory's ADMIN is its own)
+    if (f.admin === feature.sovereign || f.name === feature.sovereign) return false;
     const [fLng, fLat] = f.center;
     return Math.sqrt((fLat - mLat) ** 2 + (fLng - mLng) ** 2) < 12;
   });

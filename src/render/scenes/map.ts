@@ -1,8 +1,9 @@
 import type { Theme } from "../types";
-import { alpha, bodyFont, displayFont, displayText, fillRound } from "../theme";
+import { bodyFont, fillRound } from "../theme";
 import { wrapText } from "../text";
 import { geoFeatures, geoReady, makeProjection, type GeoFeature, type MapCam, type Projection } from "../geo";
 import { drawSymbol, type SymbolName } from "../symbols";
+import { EFFECTS } from "../effectsSymbols";
 
 /** Country / region colouring on a map, timed in absolute seconds. */
 export interface MapFill {
@@ -13,15 +14,32 @@ export interface MapFill {
   d: number;
   end: number;
   occupied: boolean;
+  isRegion?: boolean;
+}
+
+/** Per-country custom label ("rename britain "United Kingdom""). */
+export interface MapRename {
+  name: string;
+  text: string;
+  at?: [number, number];
+  t0: number;
+  end: number;
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const smooth = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const out = (t: number) => 1 - Math.pow(1 - t, 3);
 
-const OCEAN = "#dbe5ef";
-const LAND = "#fbfcfd";
-const BORDER = "#b9c4d2";
+/**
+ * The original app rendered overlays in CSS pixels of a ~1440px-wide window;
+ * our frame is 1920px, so CSS px values scale by 1920/1440.
+ */
+const S = 1920 / 1440;
+
+/** Original "Minimal" basemap colours. */
+const OCEAN = "#c2d9ec";
+const LAND = "#f0ebe0";
+const BORDER = "#3a5c72";
 
 function ringsPath(ctx: CanvasRenderingContext2D, f: GeoFeature, pr: Projection, cx: number) {
   for (const r of f.rings) {
@@ -47,14 +65,56 @@ function screenBox(f: GeoFeature, pr: Projection, cx: number): [number, number, 
 }
 const visible = (b: number[]) => b[2] > -50 && b[0] < 1970 && b[3] > -50 && b[1] < 1130;
 
-export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapCam, fills: MapFill[], labels: boolean, t: number) {
+/** Cached 45°-stripe pattern for occupied territory fills. */
+const stripeCache = new Map<string, CanvasPattern>();
+function stripePattern(ctx: CanvasRenderingContext2D, color: string): CanvasPattern | string {
+  let pat = stripeCache.get(color);
+  if (pat) return pat;
+  const tile = document.createElement("canvas");
+  const T = Math.round(32 * S);
+  tile.width = T; tile.height = T;
+  const tc = tile.getContext("2d")!;
+  const dark = darken(color, 0.3);
+  tc.strokeStyle = dark;
+  tc.lineWidth = 4 * S;
+  const gap = 8 * S;
+  // diagonal stripes at 45°, wrapping seamlessly
+  for (let i = -T; i < 2 * T; i += gap * 2) {
+    tc.beginPath();
+    tc.moveTo(i, T + 2); tc.lineTo(i + T + 2, -2);
+    tc.stroke();
+  }
+  pat = ctx.createPattern(tile, "repeat") ?? color;
+  stripeCache.set(color, pat);
+  return pat;
+}
+function darken(hex: string, f: number) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const r = Math.round(((n >> 16) & 255) * (1 - f)), g = Math.round(((n >> 8) & 255) * (1 - f)), b = Math.round((n & 255) * (1 - f));
+  return `rgb(${r},${g},${b})`;
+}
+
+/** MapLibre-style text size by zoom: 9/11/13/15 CSS px at zoom 1/4/7/10. */
+function nativeLabelSize(zoom: number) {
+  const z = Math.max(1, Math.min(10, zoom));
+  const stops: [number, number][] = [[1, 9], [4, 11], [7, 13], [10, 15]];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [z0, s0] = stops[i], [z1, s1] = stops[i + 1];
+    if (z <= z1) return (s0 + ((z - z0) / (z1 - z0)) * (s1 - s0)) * S;
+  }
+  return 15 * S;
+}
+
+export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapCam, fills: MapFill[], labels: boolean, t: number, renames: MapRename[] = []) {
   const pr = makeProjection(cam);
   const cx = pr.invertNorm(960, 540)[0];
   ctx.save();
   ctx.fillStyle = OCEAN;
   ctx.fillRect(-200, -200, 2320, 1480);
   if (!geoReady("countries")) {
-    ctx.fillStyle = alpha(theme.colors.text, 0.5);
+    ctx.fillStyle = "rgba(44,62,80,0.55)";
     ctx.font = bodyFont(theme, 32, 500);
     ctx.textAlign = "center";
     ctx.fillText("Loading map…", 960, 540);
@@ -73,82 +133,144 @@ export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapC
   ctx.fill("evenodd");
   ctx.lineJoin = "round";
   ctx.strokeStyle = BORDER;
-  ctx.lineWidth = Math.min(2.2, 0.8 + cam.zoom * 0.25);
+  ctx.lineWidth = Math.min(2.2, 1.1 + cam.zoom * 0.12);
+  ctx.globalAlpha *= 0.8;
   ctx.stroke();
+  ctx.globalAlpha /= 0.8;
 
-  // colourings
+  // colourings — original fill animations (renderer.js drawFeature)
   for (const f of fills) {
-    if (!f.feature || t < f.t0 || t >= f.end + 0.4) continue;
+    if (!f.feature || t < f.t0 || t >= f.end) continue;
     const b = boxes.get(f.feature) ?? screenBox(f.feature, pr, cx);
     if (!visible(b)) continue;
     const local = t - f.t0;
     const p = clamp01(local / Math.max(0.01, f.d));
-    let a = 0.62;
-    if (f.anim === "fade") a *= smooth(p);
-    if (f.anim === "pulse") {
-      const decay = Math.max(0, 1 - local / (f.d + 1.2));
-      a *= Math.min(1, p * 1.6) * (1 + 0.4 * Math.sin(local * Math.PI * 3.2) * decay);
+    let fa = 0, oa = 0, ow = 4 * S;
+    if (f.occupied) {
+      fa = 0.8 * clamp01(local / 0.05);
+      oa = fa;
+      ow = 3 * S;
+    } else {
+      switch (f.anim) {
+        case "none": fa = 0.7 * clamp01(local / 0.05); oa = fa; ow = 4 * S; break;
+        case "pulse": { const e = out(p); fa = 0.7 * e; oa = 0.7 * e; ow = (6 - 2 * p) * S; break; }
+        case "fade": { fa = 0.7 * p; oa = 0.7 * p; ow = 3 * S; break; }
+        case "radial": { const e = smooth(p); fa = 0.7 * e; oa = Math.min(1, e * 1.5); ow = (8 - 4 * p) * S; break; }
+        case "sweep": { ow = (8 - 4 * smooth(p)) * S; oa = 1; fa = p < 0.3 ? 0 : 0.7 * clamp01((p - 0.3) / 0.7); break; }
+      }
     }
-    if (t >= f.end) a *= 1 - (t - f.end) / 0.4;
+    if (fa <= 0 && oa <= 0) continue;
     ctx.save();
-    if (f.anim === "radial" && p < 1) {
-      const [px, py] = pr.point(...f.feature.center);
-      const R = Math.hypot(b[2] - b[0], b[3] - b[1]);
-      ctx.beginPath();
-      ctx.arc(px, py, Math.max(0.1, R * out(p)), 0, Math.PI * 2);
-      ctx.clip();
-    }
-    if (f.anim === "sweep" && p < 1) {
-      ctx.beginPath();
-      ctx.rect(b[0] - 2, b[1] - 2, (b[2] - b[0] + 4) * smooth(p), b[3] - b[1] + 4);
-      ctx.clip();
-    }
     ctx.beginPath();
     ringsPath(ctx, f.feature, pr, cx);
-    ctx.globalAlpha *= clamp01(a / 0.62);
     if (f.occupied) {
       ctx.save();
       ctx.clip("evenodd");
-      ctx.fillStyle = alpha(f.color, 0.16);
-      ctx.fillRect(b[0], b[1], b[2] - b[0], b[3] - b[1]);
-      ctx.strokeStyle = alpha(f.color, 0.85);
-      ctx.lineWidth = 6;
+      ctx.globalAlpha *= fa;
+      ctx.fillStyle = stripePattern(ctx, f.color);
+      ctx.fillRect(b[0] - T2, b[1] - T2, b[2] - b[0] + 2 * T2, b[3] - b[1] + 2 * T2);
+      ctx.restore();
+      ctx.save();
       ctx.beginPath();
-      const h = b[3] - b[1];
-      for (let x = Math.floor((b[0] - h) / 18) * 18; x < b[2]; x += 18) { ctx.moveTo(x, b[3]); ctx.lineTo(x + h, b[1]); }
+      ringsPath(ctx, f.feature, pr, cx);
+      ctx.globalAlpha *= oa;
+      ctx.strokeStyle = darken(f.color, 0.3);
+      ctx.lineWidth = ow;
+      ctx.setLineDash([8 * S, 5.3 * S]);
       ctx.stroke();
       ctx.restore();
     } else {
-      ctx.fillStyle = alpha(f.color, 0.62);
-      ctx.fill("evenodd");
+      if (fa > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ringsPath(ctx, f.feature, pr, cx);
+        ctx.globalAlpha *= fa;
+        ctx.fillStyle = f.color;
+        ctx.fill("evenodd");
+        ctx.restore();
+      }
+      if (oa > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ringsPath(ctx, f.feature, pr, cx);
+        ctx.globalAlpha *= oa;
+        ctx.strokeStyle = f.color;
+        ctx.lineWidth = ow;
+        ctx.filter = `blur(${(3 * S).toFixed(1)}px)`;
+        ctx.stroke();
+        ctx.restore();
+      }
     }
-    ctx.strokeStyle = f.color;
-    ctx.lineWidth = 2.2;
-    ctx.stroke();
     ctx.restore();
   }
 
-  if (labels) {
-    const coloured = new Set(fills.filter((f) => f.feature && t >= f.t0 && t < f.end).map((f) => f.feature));
-    ctx.font = bodyFont(theme, 22, 600);
+  if (labels) drawNativeLabels(ctx, theme, cam, pr, cx, countries, boxes, renames, t);
+  ctx.restore();
+}
+
+const T2 = 64; // pattern bleed for occupied fills
+
+/** Native country labels: uppercase, population-priority, collision-approximated. */
+function drawNativeLabels(
+  ctx: CanvasRenderingContext2D, theme: Theme, cam: MapCam, pr: Projection, cx: number,
+  countries: GeoFeature[], boxes: Map<GeoFeature, [number, number, number, number]>, renames: MapRename[], t: number,
+) {
+  const opacity = clamp01((cam.zoom - 1) / 1); // text-opacity: zoom 1 → 0, zoom 2 → 1
+  if (opacity <= 0) return;
+  const size = nativeLabelSize(cam.zoom);
+  const renamed = new Set(renames.filter((r) => t >= r.t0 && t < r.end).map((r) => r.name.toLowerCase()));
+  const eligible = countries.filter((f) => !renamed.has(f.name.toLowerCase()) &&
+    (!f.type || f.type === "Sovereign country" || f.type === "Country" || f.type === "Sovereignty"));
+  eligible.sort((a, b) => (b.pop ?? 0) - (a.pop ?? 0));
+  ctx.font = bodyFont(theme, size, 400);
+  try { (ctx as any).letterSpacing = `${(size * 0.07).toFixed(2)}px`; } catch { /* older canvas */ }
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const taken: [number, number, number, number][] = [];
+  ctx.globalAlpha *= opacity;
+  for (const f of eligible) {
+    const b = boxes.get(f)!;
+    const w = b[2] - b[0], h = b[3] - b[1];
+    if (!visible(b) || w < 34) continue;
+    const [x, y] = pr.point(...f.center);
+    if (x < 20 || x > 1900 || y < 14 || y > 1066) continue;
+    const name = f.name.toUpperCase();
+    const tw = ctx.measureText(name).width;
+    if (tw > w * 0.92) continue;
+    const rect: [number, number, number, number] = [x - tw / 2 - 6, y - size * 0.75, tw + 12, size * 1.5];
+    if (taken.some((r) => rect[0] < r[2] && rect[2] > r[0] && rect[1] < r[3] && rect[3] > r[1])) continue;
+    taken.push(rect);
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(240,235,224,0.92)";
+    ctx.lineWidth = 3;
+    ctx.strokeText(name, x, y);
+    ctx.fillStyle = "#2c3e50";
+    ctx.fillText(name, x, y);
+  }
+  try { (ctx as any).letterSpacing = "0px"; } catch { /* ignore */ }
+  ctx.globalAlpha /= opacity;
+
+  // per-country custom labels replace the native ones
+  for (const r of renames) {
+    if (t < r.t0 || t >= r.end) continue;
+    const f = countries.find((c) => c.name.toLowerCase() === r.name.toLowerCase());
+    if (!f) continue;
+    const [x, y] = r.at ? pr.point(r.at[0], r.at[1]) : pr.point(...f.center);
+    const a = clamp01((t - r.t0) / 0.3);
+    ctx.save();
+    ctx.globalAlpha *= a;
+    const fs = 14 * S;
+    ctx.font = bodyFont(theme, fs, 700);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    for (const f of countries) {
-      const b = boxes.get(f)!;
-      const w = b[2] - b[0];
-      if (!visible(b) || w < 150 || coloured.has(f)) continue;
-      const [x, y] = pr.point(...f.center);
-      if (x < 40 || x > 1880 || y < 30 || y > 1050) continue;
-      const name = f.name.toUpperCase();
-      if (ctx.measureText(name).width > w * 0.8) continue;
-      ctx.lineWidth = 5;
-      ctx.strokeStyle = "rgba(255,255,255,0.85)";
-      ctx.strokeText(name, x, y);
-      ctx.fillStyle = alpha(theme.colors.text, 0.45);
-      ctx.fillText(name, x, y);
-    }
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(255,255,255,0.95)";
+    ctx.lineWidth = 4;
+    ctx.strokeText(r.text, x, y);
+    ctx.fillStyle = "#334155";
+    ctx.fillText(r.text, x, y);
+    ctx.restore();
   }
-  ctx.restore();
 }
 
 /** Points along the attack curve. */
@@ -164,54 +286,77 @@ export function attackCurve(a: [number, number], b: [number, number], bend: numb
   return { pts, control: c };
 }
 
-/** Thick tapered military arrow, built to progress p. */
+const pathCache = new Map<string, Path2D>();
+const pathOf = (d: string) => {
+  let p = pathCache.get(d);
+  if (!p) { p = new Path2D(d); pathCache.set(d, p); }
+  return p;
+};
+
+/**
+ * Attack arrow, redrawn to the original canvas renderer: a thin quadratic
+ * stroke with an open V head, revealed along its length over ~0.8s.
+ */
 export function drawAttack(ctx: CanvasRenderingContext2D, a: [number, number], b: [number, number], bend: number, width: number, head: number, color: string, p: number) {
   if (p <= 0) return;
-  const { pts } = attackCurve(a, b, bend);
-  const m = Math.max(2, Math.round(pts.length * p));
-  const use = pts.slice(0, m);
-  const tip = use[use.length - 1], prev = use[use.length - 2];
-  const ang = Math.atan2(tip[1] - prev[1], tip[0] - prev[0]);
-  const hl = 40 * head, hw = 30 * head;
-  // stop the shaft where the head starts
-  const base: [number, number] = [tip[0] - Math.cos(ang) * hl * 0.85, tip[1] - Math.sin(ang) * hl * 0.85];
-  let cut = use.length - 1;
-  while (cut > 1 && Math.hypot(use[cut][0] - tip[0], use[cut][1] - tip[1]) < hl * 0.85) cut--;
-  const shaft = [...use.slice(0, cut + 1), base];
-  const left: [number, number][] = [], right: [number, number][] = [];
-  shaft.forEach((q, i) => {
-    const r = shaft[Math.min(shaft.length - 1, i + 1)], l = shaft[Math.max(0, i - 1)];
-    const an = Math.atan2(r[1] - l[1], r[0] - l[0]);
-    const w = (7 + 7 * (i / Math.max(1, shaft.length - 1))) * width;
-    left.push([q[0] + Math.cos(an - Math.PI / 2) * w, q[1] + Math.sin(an - Math.PI / 2) * w]);
-    right.push([q[0] + Math.cos(an + Math.PI / 2) * w, q[1] + Math.sin(an + Math.PI / 2) * w]);
-  });
+  const dist = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  if (dist < 5 * S) return;
+  const e = out(clamp01(p));
+  const distCss = dist / S;
+  const shaftW = Math.max(2, Math.min(4, distCss * 0.012)) * (width || 1) * S;
+  const headLen = Math.max(14, Math.min(32, distCss * 0.1)) * (head || 1) * S;
+  const half = headLen * 0.42;
+  const { control } = attackCurve(a, b, bend);
   ctx.save();
+  ctx.globalAlpha *= e < 0.15 ? e / 0.15 : 1;
+  // shaft — dashed reveal along the curve
+  ctx.strokeStyle = color;
+  ctx.lineWidth = shaftW;
+  ctx.lineCap = "round";
+  ctx.setLineDash([dist * 1.3 * e, dist * 1.3]);
   ctx.beginPath();
-  left.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])));
-  ctx.lineTo(base[0] + Math.cos(ang - Math.PI / 2) * hw, base[1] + Math.sin(ang - Math.PI / 2) * hw);
-  ctx.lineTo(tip[0], tip[1]);
-  ctx.lineTo(base[0] + Math.cos(ang + Math.PI / 2) * hw, base[1] + Math.sin(ang + Math.PI / 2) * hw);
-  for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
-  ctx.closePath();
-  ctx.shadowColor = "rgba(15,23,42,0.25)";
-  ctx.shadowBlur = 12;
-  ctx.shadowOffsetY = 3;
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.shadowColor = "transparent";
-  ctx.lineJoin = "round";
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = "#ffffff";
+  ctx.moveTo(a[0], a[1]);
+  ctx.quadraticCurveTo(control[0], control[1], b[0], b[1]);
   ctx.stroke();
+  ctx.setLineDash([]);
+  // open V head, fading in over the last 30% of the draw
+  const headA = Math.max(0, (e - 0.7) / 0.3);
+  if (headA > 0) {
+    const ang = Math.atan2(b[1] - control[1], b[0] - control[0]);
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    const px = -sa, py = ca;
+    ctx.globalAlpha *= headA;
+    ctx.lineWidth = Math.max(shaftW, 2) * (head || 1);
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(b[0] - ca * headLen * 0.9 + px * half, b[1] - sa * headLen * 0.9 + py * half);
+    ctx.lineTo(b[0], b[1]);
+    ctx.lineTo(b[0] - ca * headLen * 0.9 - px * half, b[1] - sa * headLen * 0.9 - py * half);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
-/** Dashed connection line with end dots. */
-export function drawRoute(ctx: CanvasRenderingContext2D, a: [number, number], b: [number, number], color: string, p: number) {
+/** Connection line between two countries: straight, dashed, under the labels. */
+export function drawRoute(ctx: CanvasRenderingContext2D, a: [number, number], b: [number, number], color: string, p: number, straight = false) {
   if (p <= 0) return;
+  const e = out(clamp01(p));
+  if (straight) {
+    const dist = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    ctx.save();
+    ctx.globalAlpha *= 0.6;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2 * S;
+    ctx.setLineDash([dist * 1.3 * e, dist * 1.3]);
+    ctx.beginPath();
+    ctx.moveTo(a[0], a[1]);
+    ctx.lineTo(b[0], b[1]);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
   const { pts } = attackCurve(a, b, 0.12);
-  const use = pts.slice(0, Math.max(2, Math.round(pts.length * p)));
+  const use = pts.slice(0, Math.max(2, Math.round(pts.length * e)));
   ctx.save();
   ctx.strokeStyle = color;
   ctx.lineWidth = 6;
@@ -226,7 +371,7 @@ export function drawRoute(ctx: CanvasRenderingContext2D, a: [number, number], b:
   ctx.restore();
 }
 
-/** Built-in pop for symbols etc. */
+/** Built-in pop for studio symbols (0.35s appear). */
 export const popIn = (local: number) => (local >= 0.35 ? 1 : Math.max(0, 1 + 2.7 * Math.pow(local / 0.35 - 1, 3) + 1.7 * Math.pow(local / 0.35 - 1, 2)));
 
 export function drawPin(ctx: CanvasRenderingContext2D, sym: SymbolName, color: string, size: number, local: number) {
@@ -238,144 +383,222 @@ export function drawPin(ctx: CanvasRenderingContext2D, sym: SymbolName, color: s
   ctx.restore();
 }
 
-export function bubbleLayout(ctx: CanvasRenderingContext2D, theme: Theme, text: string) {
-  ctx.font = bodyFont(theme, 30, 600);
-  const lines = wrapText(ctx, text, 460);
-  const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 48;
-  const h = lines.length * 40 + 30;
-  return { lines, w, h };
+/** Effect marker from the original library: 48px square scaled by size and zoom. */
+export function drawEffect(ctx: CanvasRenderingContext2D, sym: string, color: string, size: number, local: number, zoom: number) {
+  const def = EFFECTS[sym];
+  if (!def) return;
+  const zoomComp = clamp(Math.pow(2, (zoom - 4) * 0.25), 0.4, 2);
+  const px = 48 * S * clamp(size, 0.5, 3) * zoomComp;
+  // entrance animations from the original stylesheet
+  let op = 1, scale = 1, glow = 0;
+  const name = sym;
+  if (name === "explosion") {
+    const p = clamp01(local / 0.5); // fx-burst .5s
+    op = p < 0.5 ? p * 2 : 1;
+    scale = p < 0.5 ? 0.2 + (1.15 - 0.2) * out(p * 2) : 1.15 - 0.15 * clamp01((p - 0.5) / 0.5);
+  } else if (name === "fire") {
+    const ph = (local / 0.8) % 2; // flicker .8s alternate
+    const q = ph < 1 ? ph : 2 - ph;
+    op = 0.8 + 0.2 * q;
+    glow = 0.1 * q;
+  } else if (name === "nuke") {
+    const q = smooth((local % 3) / 3); // glow 3s infinite
+    glow = q;
+    op = 1;
+  } else {
+    const p = clamp01(local / 0.35); // fx-appear
+    op = p;
+    scale = 0.6 + 0.4 * out(p);
+  }
+  if (op <= 0) return;
+  const k = (px / Math.max(def.vb[0], def.vb[1])) * scale;
+  ctx.save();
+  ctx.globalAlpha *= op;
+  ctx.translate(-def.vb[0] / 2 * k, -def.vb[1] / 2 * k);
+  ctx.scale(k, k);
+  if (glow > 0.02) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12 * glow * S;
+  }
+  if (def.stroked) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = def.sw;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (const d of def.paths) ctx.stroke(pathOf(d));
+  } else {
+    ctx.fillStyle = color;
+    for (const d of def.paths) ctx.fill(pathOf(d));
+  }
+  ctx.restore();
+}
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+export function bubbleLayout(ctx: CanvasRenderingContext2D, theme: Theme, text: string, subtitle = false) {
+  const font = 20, lh = 32, padX = 2 * 29, padY = 2 * 21;
+  ctx.font = bodyFont(theme, font, 500);
+  const maxW = subtitle ? 1146 - padX : 506 - padX;
+  const lines = wrapText(ctx, text, maxW);
+  const w = subtitle ? 1146 : Math.min(506, Math.max(160, Math.max(...lines.map((l) => ctx.measureText(l).width)) + padX));
+  const h = lines.length * lh + padY;
+  return { lines, w, h, font, lh, padX, padY };
 }
 
-/** Speech-bubble callout whose pointer touches (0, 0). */
-export function drawBubble(ctx: CanvasRenderingContext2D, theme: Theme, text: string, color: string, local: number) {
-  const k = popIn(local);
+/**
+ * Dark callout card. Geographic bubbles hang above their anchor point;
+ * subtitle bubbles fill the bottom-centre band of the frame.
+ */
+export function drawBubble(ctx: CanvasRenderingContext2D, theme: Theme, text: string, color: string, local: number, subtitle = false) {
+  const k = subtitle ? clamp01(local / 0.3) : popIn(local);
   if (k <= 0) return;
-  const { lines, w, h } = bubbleLayout(ctx, theme, text);
+  const { lines, w, h, font, lh, padX, padY } = bubbleLayout(ctx, theme, text, subtitle);
   ctx.save();
-  ctx.scale(k, k);
-  const x = -w / 2, y = -h - 26;
-  ctx.shadowColor = "rgba(15,23,42,0.22)";
-  ctx.shadowBlur = 24;
-  ctx.shadowOffsetY = 6;
-  ctx.fillStyle = "#ffffff";
-  fillRound(ctx, x, y, w, h, 16);
-  ctx.beginPath();
-  ctx.moveTo(-14, y + h - 1); ctx.lineTo(0, -6); ctx.lineTo(14, y + h - 1); ctx.closePath(); ctx.fill();
+  ctx.globalAlpha *= k;
+  if (!subtitle) ctx.scale(popIn(local), popIn(local));
+  const x = -w / 2, y = subtitle ? -h : -h - 13;
+  ctx.shadowColor = "rgba(0,0,0,0.8)";
+  ctx.shadowBlur = 24 * S;
+  ctx.shadowOffsetY = 5 * S;
+  ctx.fillStyle = "rgba(20,20,30,0.95)";
+  fillRound(ctx, x, y, w, h, (subtitle ? 6 : 8) * S);
   ctx.shadowColor = "transparent";
+  // left accent stripe
   ctx.fillStyle = color;
-  fillRound(ctx, x, y, 8, h, 4);
-  ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = theme.colors.text;
-  ctx.textAlign = "left";
+  fillRound(ctx, x, y, (subtitle ? 3 : 4) * S, h, 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = bodyFont(theme, font, 500);
+  ctx.textAlign = subtitle ? "center" : "left";
   ctx.textBaseline = "middle";
-  lines.forEach((l, i) => ctx.fillText(l, x + 28, y + 15 + 20 + i * 40));
+  const tx = subtitle ? 0 : x + padX / 2;
+  lines.forEach((l, i) => ctx.fillText(l, tx, y + padY / 2 + lh * (i + 0.5)));
   ctx.restore();
 }
 
-/** Plain haloed map label centred on (0, 0). */
+/** Plain map label, white with a soft black shadow. */
 export function drawPlace(ctx: CanvasRenderingContext2D, theme: Theme, text: string, size: number, color: string, local: number) {
   ctx.save();
-  ctx.globalAlpha *= clamp01(local / 0.4);
-  ctx.font = bodyFont(theme, size * 2, 700);
+  ctx.globalAlpha *= clamp01(local / 0.3);
+  const fs = size * S;
+  ctx.font = bodyFont(theme, fs, 600);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  const dark = color === "#e5e7eb" || color === "#ffffff";
   ctx.lineJoin = "round";
-  ctx.lineWidth = size * 0.45;
-  ctx.strokeStyle = dark ? "rgba(15,23,42,0.75)" : "rgba(255,255,255,0.92)";
-  ctx.strokeText(text, 0, 0);
+  ctx.shadowColor = "rgba(0,0,0,0.9)";
+  ctx.shadowBlur = 4 * S;
+  ctx.shadowOffsetY = 2 * S;
   ctx.fillStyle = color;
+  ctx.fillText(text, 0, 0);
+  ctx.shadowColor = "rgba(0,0,0,0.9)";
+  ctx.shadowBlur = 12 * S;
+  ctx.shadowOffsetY = 0;
   ctx.fillText(text, 0, 0);
   ctx.restore();
 }
 
-export function tagWidth(ctx: CanvasRenderingContext2D, theme: Theme, text: string) {
-  ctx.font = bodyFont(theme, 28, 700);
-  return ctx.measureText(text).width + 70;
+export function tagLayout(ctx: CanvasRenderingContext2D, theme: Theme, text: string) {
+  ctx.font = bodyFont(theme, 20, 600);
+  const cw = Math.min(426, ctx.measureText(text).width + 48);
+  return { cw, ch: 21 + 32, shaft: 80, head: 13, headH: 8 };
 }
 
-/** Arrow-shaped direction label; its point sits at (0, 0). */
+/** Pointer label ("arrow"): dark card connected by a thin shaft with a solid head. */
 export function drawTag(ctx: CanvasRenderingContext2D, theme: Theme, text: string, dir: "left" | "right", color: string, local: number) {
-  const w = tagWidth(ctx, theme, text), h = 52;
-  const p = out(clamp01(local / 0.45));
+  const p = out(clamp01(local / 0.35));
   if (p <= 0) return;
-  const s = dir === "right" ? -1 : 1;
+  const { cw, ch, shaft, head, headH } = tagLayout(ctx, theme, text);
+  const s = dir === "right" ? 1 : -1;
   ctx.save();
   ctx.globalAlpha *= p;
   ctx.translate(s * 30 * (1 - p), 0);
+  // shaft
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.7;
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  ctx.lineTo(s * 26, -h / 2);
-  ctx.lineTo(s * w, -h / 2);
-  ctx.lineTo(s * w, h / 2);
-  ctx.lineTo(s * 26, h / 2);
-  ctx.closePath();
-  ctx.shadowColor = "rgba(15,23,42,0.2)";
-  ctx.shadowBlur = 14;
+  ctx.lineTo(s * (shaft - 12), 0);
+  ctx.stroke();
+  // solid triangular head
   ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(s * shaft, 0);
+  ctx.lineTo(s * (shaft - head), -headH / 2);
+  ctx.lineTo(s * (shaft - head), headH / 2);
+  ctx.closePath();
   ctx.fill();
+  // content card
+  const x = s * shaft, w = cw, h = ch;
+  ctx.shadowColor = "rgba(0,0,0,0.5)";
+  ctx.shadowBlur = 20 * S;
+  ctx.shadowOffsetY = 5 * S;
+  ctx.fillStyle = "rgba(0,0,0,0.92)";
+  fillRound(ctx, dir === "right" ? x : x - w, -h / 2, w, h, 6 * S);
   ctx.shadowColor = "transparent";
+  // accent stripe on the side facing the point
+  ctx.fillStyle = color;
+  fillRound(ctx, dir === "right" ? x : x + w - 4 * S, -h / 2, 4 * S, h, 2);
   ctx.fillStyle = "#ffffff";
-  ctx.font = bodyFont(theme, 28, 700);
+  ctx.font = bodyFont(theme, 20, 600);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(text, s * (w + 26) / 2, 1);
+  ctx.fillText(text, x + s * w / 2, 1);
   ctx.restore();
 }
 
-/** Year / date badge, top-left anchored at (0, 0). */
-export function drawYear(ctx: CanvasRenderingContext2D, theme: Theme, text: string, highlight: boolean, local: number) {
-  const p = out(clamp01(local / 0.5));
+/** Year pill, top-left, dark with a green border — as the original. */
+export function drawYear(ctx: CanvasRenderingContext2D, theme: Theme, text: string, _highlight: boolean, local: number) {
+  const p = out(clamp01(local / 0.35));
   ctx.save();
   ctx.globalAlpha *= p;
-  ctx.translate(0, -20 * (1 - p));
-  ctx.font = displayFont(theme, 72);
-  const s = displayText(theme, text);
-  const w = ctx.measureText(s).width + 72, h = 112;
-  ctx.shadowColor = "rgba(15,23,42,0.18)";
-  ctx.shadowBlur = 30;
-  ctx.shadowOffsetY = 8;
-  const flash = highlight ? Math.max(0, 1 - local / 1.4) : 0;
-  ctx.fillStyle = "#ffffff";
-  fillRound(ctx, 0, 0, w, h, theme.radius ?? 20);
+  ctx.translate(0, -16 * (1 - p));
+  const fs = 28 * S;
+  ctx.font = bodyFont(theme, fs, 700);
+  try { (ctx as any).letterSpacing = `${(-fs * 0.036).toFixed(2)}px`; } catch { /* older canvas */ }
+  const w = ctx.measureText(text).width + 2 * 43 * S, h = 28 * S + 2 * 19 * S;
+  ctx.shadowColor = "rgba(0,0,0,0.6)";
+  ctx.shadowBlur = 20 * S;
+  ctx.shadowOffsetY = 5 * S;
+  ctx.fillStyle = "rgba(0,0,0,0.95)";
+  fillRound(ctx, 0, 0, w, h, h / 2);
   ctx.shadowColor = "transparent";
-  if (flash > 0) {
-    ctx.fillStyle = alpha(theme.colors.accent, flash);
-    fillRound(ctx, 0, 0, w, h, theme.radius ?? 20);
-  }
-  ctx.fillStyle = theme.colors.accent;
-  fillRound(ctx, 0, h - 8, w, 8, 4);
-  ctx.fillStyle = flash > 0.5 ? "#ffffff" : theme.colors.text;
+  ctx.strokeStyle = "#4cd964";
+  ctx.lineWidth = 2 * S;
+  fillRound(ctx, 0, 0, w, h, h / 2);
+  ctx.stroke();
+  ctx.fillStyle = "#ffffff";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(s, w / 2, h / 2 - 2);
+  ctx.fillText(text, w / 2, h / 2 + 1);
+  try { (ctx as any).letterSpacing = "0px"; } catch { /* ignore */ }
   ctx.restore();
   return { w, h };
 }
 
-/** Legend card, bottom-left anchored at (0, 0) = its bottom-left corner. */
+/** Legend card hanging from the top-right corner, as the original. */
 export function drawLegend(ctx: CanvasRenderingContext2D, theme: Theme, entries: { label: string; color: string; t0: number }[], t: number) {
   const shown = entries.filter((e) => t >= e.t0);
   if (!shown.length) return;
   ctx.save();
-  ctx.font = bodyFont(theme, 28, 600);
-  const w = Math.max(220, ...shown.map((e) => ctx.measureText(e.label).width + 96));
-  const h = shown.length * 46 + 36;
-  ctx.shadowColor = "rgba(15,23,42,0.16)";
-  ctx.shadowBlur = 26;
-  ctx.shadowOffsetY = 6;
-  ctx.fillStyle = "rgba(255,255,255,0.96)";
-  fillRound(ctx, 0, -h, w, h, theme.radius ?? 18);
-  ctx.shadowColor = "transparent";
+  ctx.font = bodyFont(theme, 16, 400);
+  const w = Math.max(160, ...shown.map((e) => ctx.measureText(e.label).width + 21 + 13 + 2 * 21));
+  const h = shown.length * 26 + 2 * 16;
+  ctx.globalAlpha *= clamp01((t - shown[0].t0) / 0.3);
+  ctx.fillStyle = "rgba(0,0,0,0.9)";
+  fillRound(ctx, -w, 0, w, h, 8 * S);
+  ctx.strokeStyle = "rgba(102,126,234,0.3)";
+  ctx.lineWidth = 1.3;
+  ctx.stroke();
   ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
   shown.forEach((e, i) => {
     const a = out(clamp01((t - e.t0) / 0.4));
-    ctx.globalAlpha = a;
-    const y = -h + 18 + 23 + i * 46;
-    ctx.fillStyle = alpha(e.color, 0.75);
-    fillRound(ctx, 24, y - 13, 34, 26, 7);
-    ctx.fillStyle = theme.colors.text;
-    ctx.fillText(e.label, 74 + 10 * (1 - a), y);
+    ctx.save();
+    ctx.globalAlpha *= a;
+    const y = 16 + 13 + i * 26;
+    ctx.fillStyle = e.color;
+    fillRound(ctx, -w + 21, y - 10.5, 21, 21, 4);
+    ctx.fillStyle = "#dddddd";
+    ctx.fillText(e.label, -w + 21 + 21 + 13, y + 1);
+    ctx.restore();
   });
   ctx.restore();
 }

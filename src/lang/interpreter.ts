@@ -1,7 +1,8 @@
 import { LangError } from "./lexer";
 import { FONT_CHOICES } from "@/render/theme";
 import { parse, type Arg, type Expr, type Span, type Stmt } from "./parser";
-import { MAP_COLORS, MAP_COLOR_NAMES, findCountry, findRegion, fitBbox, geoReady, suggest, type GeoFeature } from "@/render/geo";
+import { MAP_COLORS, MAP_COLOR_NAMES, findCountry, findRegion, fitBbox, geoReady, normName, suggest, territoriesOf, type GeoFeature } from "@/render/geo";
+import { EFFECTS, type EffectName } from "@/render/effectsSymbols";
 import { SYMBOLS, type SymbolName } from "@/render/symbols";
 import type { MapFill } from "@/render/scenes/map";
 import { addSeg, emptyCamera, sample, EASES, EASE_NAMES, FX_STYLES, type FxStyle, type ObjKind, type Seg, type TObj, type Timeline, type Track, type Trans } from "./timeline";
@@ -404,6 +405,7 @@ export function interpret(src: string): Timeline {
         return;
       }
       case "line": {
+        if (s.legacy) return mapCommand({ ...s, name: "route" }, p, start); // connection line
         const title = str(src(0), "a chart title", near);
         const points: { x: string; y: number }[] = [];
         for (let i = 1; i < p.pos.length; i += 2) {
@@ -437,6 +439,7 @@ export function interpret(src: string): Timeline {
       }
       case "arrow":
       case "highlight": {
+        if (s.legacy && s.name === "arrow") return mapCommand({ ...s, name: "tag" }, p, start); // pointer label
         const fg = kw1(p, "from"), tg = kw1(p, "to");
         if (!fg || !tg) err(`${s.name} needs "from x y to x y"`, near);
         const x1 = num(fg![1], "x", fg![0]), y1 = num(fg![2], "y", fg![0]);
@@ -499,6 +502,21 @@ export function interpret(src: string): Timeline {
         return;
       }
       case "zoom": {
+        if (s.legacy && src(0)?.kind === "word") {
+          // zoom: COUNTRY — frame the country smoothly, block 0.6s
+          if (!geoReady("countries")) { needGeo.add("countries"); return; }
+          const f = country(src(0), s);
+          if (f) {
+            const m = needMap(s);
+            const c = fitBbox(f.bbox, 0.07);
+            camSeg(m.data.cam.pos, [{ v: c.lat }, { v: c.lng }], p, s, start, { v: 0.6 }, "smooth");
+            camSeg(m.data.cam.zoom, [{ v: Math.min(8, c.zoom) }], p, s, start, { v: 0.6 }, "smooth");
+            cursor = Math.max(cursor, start + 0.6);
+            bump(cursor);
+            m.lines.push(s.line);
+          }
+          return;
+        }
         const first = src(0);
         if (!first || first.kind === "num") {
           // zoom transition
@@ -576,8 +594,14 @@ export function interpret(src: string): Timeline {
 
   // ---------- maps ----------
   const measureBubble = (text: string) => {
-    const lines = Math.max(1, Math.ceil((text.length * 15) / 460));
-    return { w: Math.min(508, text.length * 15 + 48), h: lines * 40 + 30 };
+    // dark card: 20px text, padding 21x29, max width 506px (380 CSS px scaled)
+    const lines = Math.max(1, Math.ceil((text.length * 10.4) / 448));
+    return { w: Math.min(506, Math.max(160, text.length * 10.4 + 58)), h: lines * 32 + 42 };
+  };
+  const measureSubtitle = (text: string) => {
+    // subtitle bubble: fixed 72% width capped at 1146px, bottom-centre
+    const lines = Math.max(1, Math.ceil((text.length * 10.4) / 1060));
+    return { w: 1146, h: lines * 34 + 42 };
   };
   const nearOf = (s: Extract<Stmt, { kind: "cmd" }>) => ({ tok: s.nameTok });
 
@@ -631,6 +655,18 @@ export function interpret(src: string): Timeline {
     return o;
   }
 
+  /** Original fill-in durations, in seconds (executor + renderer.js). */
+  const FILL_DUR: Record<MapFill["anim"], number> = { none: 0.05, pulse: 1.8, fade: 1.5, radial: 1.8, sweep: 1.8 };
+
+  function applyFill(m: TObj, f: GeoFeature | null, col: string, anim: MapFill["anim"], d: number, occupied: boolean, isRegion: boolean, start: number, line: number) {
+    const fills = m.data.fills as (MapFill & { line: number; key: string; isRegion: boolean })[];
+    const fill = { feature: f, color: col, anim, t0: start, d, end: Infinity, occupied, isRegion, line, key: f?.name ?? "" };
+    fills.push(fill);
+    mapElems.push(fill);
+    m.lines.push(line);
+    bump(start + d);
+  }
+
   function mapCommand(s: Extract<Stmt, { kind: "cmd" }>, p: Parsed, start: number): boolean {
     const near = nearOf(s);
     const A = p.pos;
@@ -662,6 +698,21 @@ export function interpret(src: string): Timeline {
       case "fly": {
         const m = needMap(s);
         const cam = m.data.cam;
+        if (s.legacy) {
+          // fly: LAT, LNG, ZOOM — smooth flyTo, blocks the script for 1.2s
+          const lat = A[0] && (A[0].kind === "num" || A[0].kind === "expr") ? num(A[0], "latitude", near).v : NaN;
+          const lng = A[1] && (A[1].kind === "num" || A[1].kind === "expr") ? num(A[1], "longitude", A[0]).v : NaN;
+          const z = A[2] && (A[2].kind === "num" || A[2].kind === "expr") ? num(A[2], "zoom", A[1] ?? near).v : NaN;
+          if (Number.isNaN(lat) || Number.isNaN(lng) || Number.isNaN(z)) return true; // original silently skips
+          camSeg(cam.pos, [{ v: lat }, { v: lng }], p, s, start, { v: 1.2 }, "smooth");
+          camSeg(cam.zoom, [{ v: z }], p, s, start, { v: 1.2 }, "smooth");
+          camSeg(cam.tilt, [{ v: 0 }], p, s, start, { v: 1.2 }, "smooth");
+          camSeg(cam.turn, [{ v: 0 }], p, s, start, { v: 1.2 }, "smooth");
+          cursor = Math.max(cursor, start + 1.2);
+          bump(cursor);
+          m.lines.push(s.line);
+          return true;
+        }
         const overG = kw1(p, "over");
         const d = overG ? num(overG[1], "duration", overG[0]) : { v: 1.5 };
         let any = false;
@@ -687,10 +738,12 @@ export function interpret(src: string): Timeline {
       case "country":
       case "region": {
         const m = needMap(s);
-        let f: GeoFeature | null;
+        let f: GeoFeature | null = null;
         let i = 1;
-        if (s.name === "country") { if (!A[0]) err("Expected a country name", near); f = country(A[0], s); }
-        else {
+        if (s.name === "country") {
+          if (!A[0]) err("Expected a country name", near);
+          f = country(A[0], s);
+        } else {
           const rn = A[0], cn = A[1];
           if (!rn || !cn) err("region needs a region name and its country, e.g. region crimea ukraine red occupied", near);
           const rname = rn.kind === "str" ? rn.v : word(rn, "a region name", near);
@@ -699,9 +752,29 @@ export function interpret(src: string): Timeline {
           if (!geoReady("regions") || !geoReady("countries")) { needGeo.add("regions"); needGeo.add("countries"); f = null; }
           else {
             f = findRegion(rname, cname) ?? null;
-            if (!f) { const sg = suggest("regions", rname, cname); err(`Unknown region "${rname}" in ${cname}${sg.length ? `. Try ${sg.join(", ")}` : ""}`, rn); }
+            if (!f && !s.legacy) { const sg = suggest("regions", rname, cname); err(`Unknown region "${rname}" in ${cname}${sg.length ? `. Try ${sg.join(", ")}` : ""}`, rn); }
           }
         }
+        if (s.legacy) {
+          // the original silently skips unknown features
+          if (!f) return true;
+          const col = color(A[i], s);
+          let anim: MapFill["anim"] = "none";
+          let occupied = false;
+          for (const a of A.slice(i + 1)) {
+            if (a.kind !== "word") continue;
+            if (a.name === "occupied") occupied = true;
+            else if ((MAP_ANIMS as readonly string[]).includes(a.name)) anim = a.name as MapFill["anim"];
+          }
+          const d = FILL_DUR[anim];
+          if (s.name === "country") {
+            // countries also colour nearby territories of the same sovereign
+            applyFill(m, f, col, anim, d, occupied, false, start, s.line);
+            for (const t of territoriesOf(f)) applyFill(m, t, col, anim, d, false, false, start, s.line);
+          } else applyFill(m, f, col, anim, d, occupied, true, start, s.line);
+          return true;
+        }
+        if (!f) err(`Unknown ${s.name} "${A[0]!.kind === "str" ? A[0]!.v : (A[0] as any).text ?? (A[0] as any).name}"`, A[0]!);
         const col = color(A[i], s);
         let anim: MapFill["anim"] = "fade", occupied = false;
         for (const a of A.slice(i + 1)) {
@@ -711,19 +784,79 @@ export function interpret(src: string): Timeline {
           else err(`Unknown option "${w}". Use ${MAP_ANIMS.join(", ")} or occupied`, a);
         }
         const overG = kw1(p, "over");
-        const d = overG ? num(overG[1], "duration", overG[0]).v : anim === "none" ? 0.01 : anim === "pulse" ? 0.9 : 0.8;
-        const fills = m.data.fills as (MapFill & { line: number; key: string })[];
-        const key = f?.name ?? "";
-        for (const old of fills) if (old.key === key && old.end === Infinity && f) old.end = start + d;
-        const fill = { feature: f, color: col, anim, t0: start, d, end: Infinity, occupied, line: s.line, key };
-        fills.push(fill);
-        mapElems.push(fill);
-        m.lines.push(s.line);
-        bump(start + d);
+        const d = overG ? num(overG[1], "duration", overG[0]).v : FILL_DUR[anim];
+        // fills stack: a later colour simply draws over the earlier one
+        applyFill(m, f, col, anim, d, occupied, s.name === "region", start, s.line);
         return true;
       }
       case "attack":
       case "route": {
+        if (s.legacy) {
+          if (s.name === "route") {
+            // line: ORIGIN, TARGET, COLOR — two countries → dashed straight line; coordinates → thin arrow
+            if (!geoReady("countries")) { needGeo.add("countries"); return true; }
+            if (A[0] && (A[0].kind === "num" || A[0].kind === "expr")) {
+              const aLL: [number, number] = [num(A[1], "longitude", A[0]).v, num(A[0], "latitude", near).v];
+              const bLL: [number, number] = A[3] ? [num(A[3], "longitude", A[2]).v, num(A[2], "latitude", A[1] ?? near).v] : aLL;
+              const col = A[4] ? color(A[4], s) : MAP_COLORS["blue"];
+              p.kw["over"] = [[{ kind: "word", name: "over", tok: s.nameTok }, { kind: "num", v: 0.8, isDur: true, tok: s.nameTok }]];
+              geoObj("attack", p, s, start, { a: aLL, b: bLL, color: col, bend: 0, width: 0.5, head: 0.5 });
+              return true;
+            }
+            const f1 = A[0] ? country(A[0], s) : null;
+            const f2 = A[1] ? country(A[1], s) : null;
+            const col = A[2] ? color(A[2], s) : MAP_COLORS["blue"];
+            if (!f1 || !f2) return true; // the original silently skips unresolved endpoints
+            p.kw["over"] = [[{ kind: "word", name: "over", tok: s.nameTok }, { kind: "num", v: 0.8, isDur: true, tok: s.nameTok }]];
+            geoObj("route", p, s, start, { a: f1.center, b: f2.center, color: col, bend: 0, width: 2, head: 0, straight: true });
+            return true;
+          }
+          // attack: E1, E2, COLOR[, CURVE, WIDTH, HEAD, DUR] — or the named form:
+          // attack: from LAT LNG, to LAT LNG, color C, curve N, width N, head N, dur MS
+          let ai = 0;
+          let aLL: [number, number], bLL: [number, number];
+          let aSpans: (Span | undefined)[] = [], bSpans: (Span | undefined)[] = [];
+          let aName: Span | undefined, bName: Span | undefined;
+          if (A[0]?.kind === "word" && A[0].name === "from") {
+            const la = num(A[1], "latitude", A[0]), ln = num(A[2], "longitude", A[1] ?? A[0]);
+            aLL = [ln.v, la.v]; aSpans = [la.span, ln.span]; ai = 3;
+          } else {
+            const pl = place(A, 0, s); aLL = pl.ll; aSpans = pl.spans; aName = pl.nameSpan; ai = pl.used;
+          }
+          if (A[ai]?.kind === "word" && A[ai].name === "to") {
+            const la = num(A[ai + 1], "latitude", A[ai]), ln = num(A[ai + 2], "longitude", A[ai + 1] ?? A[ai]);
+            bLL = [ln.v, la.v]; bSpans = [la.span, ln.span]; ai += 3;
+          } else {
+            const pl = place(A, ai, s); bLL = pl.ll; bSpans = pl.spans; bName = pl.nameSpan; ai += pl.used;
+          }
+          let curve = kw1(p, "curve") ? num(kw1(p, "curve")![1], "curve", kw1(p, "curve")![0]).v : 0.15;
+          let width = 1, head = NaN, dur = 0.8, slot = 0;
+          let col = MAP_COLORS["red"];
+          const FIELD = ["curve", "width", "head", "dur", "anim"];
+          if (A[ai] && (A[ai].kind === "word" || A[ai].kind === "str") && !(A[ai].kind === "word" && FIELD.includes(A[ai].name))) { col = color(A[ai], s); ai++; }
+          while (ai < A.length) {
+            const a2 = A[ai];
+            if (a2.kind === "word" && FIELD.includes(a2.name)) {
+              if (a2.name === "curve") { curve = num(A[ai + 1], "curve", a2).v; slot = 1; }
+              else if (a2.name === "width") { width = num(A[ai + 1], "width", a2).v; slot = 2; }
+              else if (a2.name === "head") { head = num(A[ai + 1], "head", a2).v; }
+              else if (a2.name === "dur") { dur = num(A[ai + 1], "duration", a2).v; }
+              ai += 2;
+            } else if (a2.kind === "num" || a2.kind === "expr") {
+              const v = num(a2, "a number", near).v;
+              if (slot === 0) { curve = v; slot = 1; }
+              else if (slot === 1) { width = v; slot = 2; }
+              else if (slot === 2) { head = v; slot = 3; }
+              else { dur = v; }
+              ai++;
+            } else ai++; // stray animation word etc.
+          }
+          head = Number.isNaN(head) ? width : head;
+          p.kw["over"] = [[{ kind: "word", name: "over", tok: s.nameTok }, { kind: "num", v: Math.max(0.05, dur), isDur: true, tok: s.nameTok }]];
+          const o = geoObj("attack", p, s, start, { a: aLL, b: bLL, color: col, bend: curve, width, head });
+          o.data.ends = { a: { spans: aSpans, nameSpan: aName }, b: { spans: bSpans, nameSpan: bName } };
+          return true;
+        }
         const a = place(A, 0, s);
         const b = place(A, a.used, s);
         const col = color(A[a.used + b.used], s, s.name === "route" ? MAP_COLORS["blue"] : MAP_COLORS["red"]);
@@ -740,6 +873,18 @@ export function interpret(src: string): Timeline {
       case "bubble":
       case "label":
       case "tag": {
+        // subtitle-style bubble: no coordinates — fixed to the bottom-centre of the frame
+        const sub = s.name === "bubble" && (s.legacy || !A[0] || A[0].kind === "str");
+        if (sub) {
+          const text = str(A[0], "bubble text", near);
+          const col = A[1] ? color(A[1], s) : "#4cd964";
+          const lay = measureSubtitle(text);
+          const o = geoObj("bubble", p, s, start, { text, color: col, subtitle: true, rel: [-lay.w / 2, -lay.h, lay.w, lay.h] });
+          o.origin = [W / 2, H - 13];
+          o.pos.base = [W / 2, H - 13];
+          o.box = [W / 2 - lay.w / 2, H - 13 - lay.h, lay.w, lay.h];
+          return true;
+        }
         const lat = num(A[0], "latitude", near), lng = num(A[1], "longitude", A[0] ?? near);
         let data: any = { lat: lat.v, lng: lng.v };
         let rel: number[];
@@ -752,22 +897,22 @@ export function interpret(src: string): Timeline {
           rel = [-r, -r, 2 * r, 2 * r];
         } else if (s.name === "bubble") {
           const text = str(A[2], "bubble text", A[1] ?? near);
-          data = { ...data, text, color: color(A[3], s, MAP_COLORS["blue"]) };
+          data = { ...data, text, color: color(A[3], s, "#4cd964") };
           const lay = measureBubble(text);
-          rel = [-lay.w / 2, -lay.h - 26, lay.w, lay.h + 30];
+          rel = [-lay.w / 2, -lay.h - 13, lay.w, lay.h + 13];
         } else if (s.name === "label") {
           const text = str(A[2], "label text", A[1] ?? near);
-          const size = kw1(p, "size") ? num(kw1(p, "size")![1], "size", kw1(p, "size")![0]).v : 18;
-          data = { ...data, text, size, color: color(A[3], s, "#0f172a") };
+          const size = kw1(p, "size") ? num(kw1(p, "size")![1], "size", kw1(p, "size")![0]).v : s.legacy ? 14 : 18;
+          data = { ...data, text, size, color: color(A[3], s, s.legacy ? "#ffffff" : "#0f172a") };
           const w = text.length * size * 1.15 + 20;
           rel = [-w / 2, -size * 1.3, w, size * 2.6];
         } else {
           const text = str(A[2], "tag text", A[1] ?? near);
           const dir = A[3] ? word(A[3], "left or right", A[2]) : "right";
           if (dir !== "left" && dir !== "right") err("Use left or right", A[3]);
-          data = { ...data, text, dir, color: color(A[4], s, MAP_COLORS["red"]) };
-          const w = text.length * 17 + 70;
-          rel = dir === "right" ? [-w, -30, w, 60] : [0, -30, w, 60];
+          data = { ...data, text, dir, color: color(A[4], s, s.legacy ? "#ffffff" : MAP_COLORS["red"]) };
+          const cw = Math.min(426, text.length * 10 + 48), ch = 60;
+          rel = dir === "right" ? [0, -ch / 2, 80 + cw, ch] : [-80 - cw, -ch / 2, 80 + cw, ch];
         }
         const o = geoObj(s.name as ObjKind, p, s, start, { ...data, rel });
         o.createSpans.at = [lat.span, lng.span];
@@ -777,23 +922,27 @@ export function interpret(src: string): Timeline {
         const text = str(A[0], "a year or date", near);
         const hl = A[1]?.kind === "word" && A[1].name === "highlight";
         if (yearObj && yearObj.end === Infinity) yearObj.end = start;
-        const w = text.length * 44 + 72;
-        yearObj = makeObj("year", p, s, start, [60, 50], [60, 50, w, 112], { text, highlight: hl });
-        yearObj.pos.base = [60, 50];
+        // pill badge, 28 CSS px font, padding 14/32 → top-left at 32,32 in the frame
+        const w = text.length * 22 + 100, h = 74;
+        yearObj = makeObj("year", p, s, start, [32, 32], [32, 32, w, h], { text, highlight: hl });
+        yearObj.pos.base = [32, 32];
         return true;
       }
       case "legend": {
         const a = A[0];
         if (a?.kind === "word" && a.name === "hide") { if (legendObj && legendObj.end === Infinity) legendObj.end = start; legendObj = undefined; return true; }
         if (!legendObj) {
-          legendObj = makeObj("legend", p, s, start, [60, H - 60], [60, H - 300, 420, 240], { entries: [], auto: false, map: curMap });
-          legendObj.pos.base = [60, H - 60];
+          // card hangs from the top-right corner
+          legendObj = makeObj("legend", p, s, start, [W - 19, 19], [W - 460, 19, 440, 260], { entries: [], auto: false, map: curMap });
+          legendObj.pos.base = [W - 19, 19];
         } else legendObj.lines.push(s.line);
         if (a?.kind === "word" && a.name === "auto") { legendObj.data.auto = true; legendObj.data.autoFrom = start; return true; }
         const label = str(a, 'a legend label, or auto / hide', near);
-        legendObj.data.entries.push({ label, color: color(A[1], s), t0: start });
+        legendObj.data.entries.push({ label, color: color(A[1], s, MAP_COLORS["blue"]), t0: start });
         const n = legendObj.data.entries.length;
-        legendObj.box = [60, H - 60 - (n * 46 + 36), Math.max(260, Math.max(...legendObj.data.entries.map((e: any) => e.label.length * 16 + 100))), n * 46 + 36];
+        const w = Math.max(160, ...legendObj.data.entries.map((e: any) => e.label.length * 10 + 64));
+        const h = n * 34 + 32;
+        legendObj.box = [W - 19 - w, 19, w, h];
         return true;
       }
       case "remove": {
@@ -802,15 +951,106 @@ export function interpret(src: string): Timeline {
         const isFill = (x: any): x is MapFill & { line: number } => !("kind" in x);
         const live = mapElems.filter((x) => x.end === Infinity);
         const kill = (x: (typeof mapElems)[number]) => { x.end = start; };
-        if (what === "last") { const x = live[live.length - 1]; if (x) kill(x); }
+        if (what === "last") {
+          if (s.legacy) {
+            // the original removes the last placed marker only (labels, bubbles, tags, effects)
+            for (let k = markerStack.length - 1; k >= 0; k--) if (markerStack[k].end === Infinity) { kill(markerStack[k]); break; }
+          } else { const x = live[live.length - 1]; if (x) kill(x); }
+        }
         for (const x of live) {
           if (isFill(x)) { if (what === "colors" || what === "all") kill(x); continue; }
           const k = x.kind;
-          if ((what === "arrows" && (k === "attack" || k === "route")) || (what === "pins" && k === "pin") ||
+          if ((what === "arrows" && k === "attack") || (what === "lines" && k === "route") ||
+            ((what === "pins" || what === "effects") && (k === "pin" || k === "effect")) ||
             (what === "labels" && (k === "bubble" || k === "label" || k === "tag")) || what === "all") kill(x);
         }
         if ((what === "legend" || what === "all") && legendObj) { legendObj.end = start; legendObj = undefined; }
         if ((what === "year" || what === "all") && yearObj) { yearObj.end = start; yearObj = undefined; }
+        return true;
+      }
+      case "effect": {
+        const lat = num(A[0], "latitude", near), lng = num(A[1], "longitude", A[0] ?? near);
+        const sym = word(A[2], "an effect name", A[1] ?? near).toLowerCase();
+        if (!EFFECTS[sym]) {
+          if (s.legacy) return true; // the original silently skips unknown effects
+          err(`Unknown effect "${sym}". Use ${Object.keys(EFFECTS).join(", ")}`, A[2]);
+        }
+        const col = A[3] ? color(A[3], s, MAP_COLORS["red"]) : MAP_COLORS["red"];
+        const size = A[4] ? num(A[4], "a size", A[3] ?? near).v : 1.5;
+        const r = 32 * size;
+        const o = geoObj("effect", p, s, start, { lat: lat.v, lng: lng.v, symbol: sym, color: col, size, rel: [-r, -r, 2 * r, 2 * r] });
+        o.createSpans.at = [lat.span, lng.span];
+        return true;
+      }
+      case "cinematic": {
+        const m = needMap(s);
+        const numAt = (k: number) => (A[k] && (A[k]!.kind === "num" || A[k]!.kind === "expr") ? num(A[k]!, "a number", near).v : NaN);
+        const lat = numAt(0), lng = numAt(1), z = numAt(2);
+        if (Number.isNaN(lat) || Number.isNaN(lng) || Number.isNaN(z)) return true; // the original silently skips
+        let pitch = numAt(3);
+        if (Number.isNaN(pitch)) pitch = 30;
+        pitch = pitch === 0 ? 30 : Math.min(30, Math.max(0, pitch));
+        const bearing = Number.isNaN(numAt(4)) ? 0 : numAt(4);
+        const cam = m.data.cam;
+        camSeg(cam.pos, [{ v: lat }, { v: lng }], p, s, start, { v: 2 }, "smooth");
+        camSeg(cam.zoom, [{ v: z }], p, s, start, { v: 2 }, "smooth");
+        camSeg(cam.tilt, [{ v: pitch }], p, s, start, { v: 2 }, "smooth");
+        camSeg(cam.turn, [{ v: bearing }], p, s, start, { v: 2 }, "smooth");
+        cursor = Math.max(cursor, start + 2);
+        bump(cursor);
+        m.lines.push(s.line);
+        return true;
+      }
+      case "clear": {
+        const m = needMap(s);
+        if (!geoReady("countries")) { needGeo.add("countries"); return true; }
+        if (!A[0]) return true;
+        const f = country(A[0], s);
+        if (!f) return true; // silently skips unknown names
+        const nn = normName(f.name);
+        for (const x of m.data.fills as (MapFill & { line: number })[]) {
+          if (x.end === Infinity && x.feature && (normName(x.feature.name) === nn || normName(x.feature.sovereign ?? "") === nn)) x.end = start;
+        }
+        m.lines.push(s.line);
+        return true;
+      }
+      case "clearregions": {
+        const m = needMap(s);
+        if (!geoReady("countries")) { needGeo.add("countries"); return true; }
+        if (!A[0]) return true;
+        const f = country(A[0], s);
+        if (!f) return true;
+        const nn = normName(f.name);
+        for (const x of m.data.fills as (MapFill & { line: number; isRegion?: boolean })[]) {
+          if (x.end === Infinity && x.isRegion && x.feature && (normName(x.feature.country ?? "") === nn || normName(x.feature.sovereign ?? "") === nn)) x.end = start;
+        }
+        m.lines.push(s.line);
+        return true;
+      }
+      case "rename": {
+        const m = needMap(s);
+        if (!geoReady("countries")) { needGeo.add("countries"); return true; }
+        if (!A[0]) err("rename needs a country and a label, e.g. rename britain \"United Kingdom\"", near);
+        const f = country(A[0], s);
+        if (!f) return true;
+        const text = str(A[1], "a label", near);
+        const ag = kw1(p, "at");
+        const at: [number, number] | undefined = ag ? [num(ag[2], "longitude", ag[0]).v, num(ag[1], "latitude", ag[0]).v] : undefined;
+        const renames: any[] = (m.data.renames ??= []);
+        const prev = renames.find((r) => r.name === f!.name && r.end === Infinity);
+        if (prev) prev.end = start;
+        renames.push({ name: f!.name, text, at, t0: start, end: Infinity, line: s.line });
+        m.lines.push(s.line);
+        return true;
+      }
+      case "unrename": {
+        const m = needMap(s);
+        if (!geoReady("countries")) { needGeo.add("countries"); return true; }
+        if (!A[0]) return true;
+        const f = country(A[0], s);
+        if (!f) return true;
+        for (const r of (m.data.renames ?? []) as any[]) if (r.name === f.name && r.end === Infinity) r.end = start;
+        m.lines.push(s.line);
         return true;
       }
     }
@@ -819,6 +1059,22 @@ export function interpret(src: string): Timeline {
 
   exec(prog.stmts, true);
   if (needGeo.size) tl.needsGeo = [...needGeo];
+  // legend auto: snapshot every country fill in command order, one per colour
+  if (legendObj?.data.auto) {
+    const entries: { label: string; color: string; t0: number }[] = [];
+    const seen = new Set<string>();
+    for (const o of tl.objects) {
+      if (o.kind !== "map") continue;
+      for (const f of o.data.fills as (MapFill & { isRegion?: boolean })[]) {
+        if (f.isRegion || !f.feature || seen.has(f.color)) continue;
+        seen.add(f.color);
+        entries.push({ label: f.feature.name, color: f.color, t0: legendObj.data.autoFrom });
+      }
+    }
+    legendObj.data.entries = entries;
+    const w = Math.max(160, ...entries.map((e) => e.label.length * 10 + 64));
+    legendObj.box = [W - 19 - w, 19, w, entries.length * 34 + 32];
+  }
   bump(cursor);
   tl.duration = Math.max(1, maxT + 0.5);
   for (const o of tl.objects) if (o.end === Infinity) o.end = tl.duration;
