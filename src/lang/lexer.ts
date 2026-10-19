@@ -102,12 +102,14 @@ export function lex(src: string): LexLine[] {
         if (Number.isNaN(v)) throw new LangError(`Bad number "${numText}"`, line, startCol, i - startCol);
         let isDur = false;
         if (raw[i] === "s" && !isId(raw[i + 1] ?? "")) {
-          isDur = i += 1, true;
+          isDur = true;
+          i += 1;
         } else if (raw.startsWith("ms", i) && !isId(raw[i + 2] ?? "")) {
-          isDur = i += 2, true;
+          isDur = true;
+          i += 2;
+          v = v / 1000; // milliseconds become seconds
         }
-        const out = isDur && raw[i - 1] === "s" && raw[i - 2] === "m" ? v / 1000 : v;
-        push("num", raw.slice(startCol, i), out, { isDur });
+        push("num", raw.slice(startCol, i), v, { isDur });
         continue;
       }
       if (isIdStart(c)) {
