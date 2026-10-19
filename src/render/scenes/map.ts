@@ -203,11 +203,11 @@ export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapC
     }
     ctx.restore();
   }
-  void T2;
 
   if (labels) drawNativeLabels(ctx, theme, cam, pr, cx, countries, boxes, renames, t);
   ctx.restore();
 }
+
 const T2 = 64; // pattern bleed for occupied fills
 
 /** Native country labels: uppercase, population-priority, collision-approximated. */
