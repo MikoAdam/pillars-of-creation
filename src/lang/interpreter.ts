@@ -631,6 +631,18 @@ export function interpret(src: string): Timeline {
     return o;
   }
 
+  /** Original fill-in durations, in seconds (executor + renderer.js). */
+  const FILL_DUR: Record<MapFill["anim"], number> = { none: 0.05, pulse: 1.8, fade: 1.5, radial: 1.8, sweep: 1.8 };
+
+  function applyFill(m: TObj, f: GeoFeature | null, col: string, anim: MapFill["anim"], d: number, occupied: boolean, isRegion: boolean, start: number, line: number) {
+    const fills = m.data.fills as (MapFill & { line: number; key: string; isRegion: boolean })[];
+    const fill = { feature: f, color: col, anim, t0: start, d, end: Infinity, occupied, isRegion, line, key: f?.name ?? "" };
+    fills.push(fill);
+    mapElems.push(fill);
+    m.lines.push(line);
+    bump(start + d);
+  }
+
   function mapCommand(s: Extract<Stmt, { kind: "cmd" }>, p: Parsed, start: number): boolean {
     const near = nearOf(s);
     const A = p.pos;
