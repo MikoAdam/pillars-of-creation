@@ -855,6 +855,18 @@ export function interpret(src: string): Timeline {
       case "bubble":
       case "label":
       case "tag": {
+        // subtitle-style bubble: no coordinates — fixed to the bottom-centre of the frame
+        const sub = s.name === "bubble" && (s.legacy || !A[0] || A[0].kind === "str");
+        if (sub) {
+          const text = str(A[0], "bubble text", near);
+          const col = A[1] ? color(A[1], s) : "#4cd964";
+          const lay = measureSubtitle(text);
+          const o = geoObj("bubble", p, s, start, { text, color: col, subtitle: true, rel: [-lay.w / 2, -lay.h, lay.w, lay.h] });
+          o.origin = [W / 2, H - 13];
+          o.pos.base = [W / 2, H - 13];
+          o.box = [W / 2 - lay.w / 2, H - 13 - lay.h, lay.w, lay.h];
+          return true;
+        }
         const lat = num(A[0], "latitude", near), lng = num(A[1], "longitude", A[0] ?? near);
         let data: any = { lat: lat.v, lng: lng.v };
         let rel: number[];
@@ -867,22 +879,22 @@ export function interpret(src: string): Timeline {
           rel = [-r, -r, 2 * r, 2 * r];
         } else if (s.name === "bubble") {
           const text = str(A[2], "bubble text", A[1] ?? near);
-          data = { ...data, text, color: color(A[3], s, MAP_COLORS["blue"]) };
+          data = { ...data, text, color: color(A[3], s, "#4cd964") };
           const lay = measureBubble(text);
-          rel = [-lay.w / 2, -lay.h - 26, lay.w, lay.h + 30];
+          rel = [-lay.w / 2, -lay.h - 13, lay.w, lay.h + 13];
         } else if (s.name === "label") {
           const text = str(A[2], "label text", A[1] ?? near);
-          const size = kw1(p, "size") ? num(kw1(p, "size")![1], "size", kw1(p, "size")![0]).v : 18;
-          data = { ...data, text, size, color: color(A[3], s, "#0f172a") };
+          const size = kw1(p, "size") ? num(kw1(p, "size")![1], "size", kw1(p, "size")![0]).v : s.legacy ? 14 : 18;
+          data = { ...data, text, size, color: color(A[3], s, s.legacy ? "#ffffff" : "#0f172a") };
           const w = text.length * size * 1.15 + 20;
           rel = [-w / 2, -size * 1.3, w, size * 2.6];
         } else {
           const text = str(A[2], "tag text", A[1] ?? near);
           const dir = A[3] ? word(A[3], "left or right", A[2]) : "right";
           if (dir !== "left" && dir !== "right") err("Use left or right", A[3]);
-          data = { ...data, text, dir, color: color(A[4], s, MAP_COLORS["red"]) };
-          const w = text.length * 17 + 70;
-          rel = dir === "right" ? [-w, -30, w, 60] : [0, -30, w, 60];
+          data = { ...data, text, dir, color: color(A[4], s, s.legacy ? "#ffffff" : MAP_COLORS["red"]) };
+          const cw = Math.min(426, text.length * 10 + 48), ch = 60;
+          rel = dir === "right" ? [0, -ch / 2, 80 + cw, ch] : [-80 - cw, -ch / 2, 80 + cw, ch];
         }
         const o = geoObj(s.name as ObjKind, p, s, start, { ...data, rel });
         o.createSpans.at = [lat.span, lng.span];
