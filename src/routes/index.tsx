@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video } from "lucide-react";
+import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video, RotateCcw } from "lucide-react";
 import { run } from "@/lang/interpreter";
 import { styleValues, type Timeline, type TObj } from "@/lang/timeline";
 import { insertAtTime, removeFx, resetStyle, setStyle, writeFx, writeMove, writeOver, writeProp, writeScale, writeStart } from "@/lang/writeback";
@@ -136,13 +136,14 @@ function Studio() {
       if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? hist.redo() : hist.undo(); return; }
       if (mod && e.key.toLowerCase() === "y") { e.preventDefault(); hist.redo(); return; }
       if (e.code === "Space") { e.preventDefault(); toggle(); return; }
+      if (e.key.toLowerCase() === "r" && !mod) { seek(0); setPlaying(true); return; }
       if (e.key === "Escape") setSelectedId(null);
       const tl = TOOLS.find((x) => x.key === e.key.toLowerCase());
       if (tl && !mod) setTool(tl.id);
     };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
-  }, [toggle, hist]);
+  }, [toggle, hist, seek]);
 
   // hand actions: all go through code
   const hand = (next: string) => { if (next !== hist.codeRef.current) hist.setHand(next); };
@@ -297,6 +298,9 @@ function Studio() {
                   onDropAsset={insertPhoto}
                 />
                 <div className="mt-3 flex items-center gap-3">
+                  <button onClick={() => { seek(0); setPlaying(true); }} title="Restart from the beginning (R)" className="flex items-center gap-1.5 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-accent">
+                    <RotateCcw className="h-4 w-4" /> Restart
+                  </button>
                   <button onClick={toggle} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
                     {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     {playing ? "Pause" : "Play"}

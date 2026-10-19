@@ -60,4 +60,69 @@ move say2 to 960 480 curve 120 over 1.2s ease spring delay 2s
 wait 3s
 `,
   },
+  {
+    id: "showcase",
+    name: "Feature Showcase (everything)",
+    code: `project "Everything Paint & Turtle Can Do" theme clean_modern
+style radius 28
+
+# --- 1. Kinetic text with entrance + exit
+say "Every *feature*, one video" beat 0.3s enter pop exit blur
+wait 2.5s
+whip 0.5
+
+# --- 2. Photo: Ken Burns zoom, caption, camera move, rotate, fade
+show photo @pillars as nebula enter blur
+zoom nebula 1.0 to 1.2 over 5s ease smooth
+caption nebula "Photos zoom, pan and get captions"
+camera to 1100 450 zoom 1.2 over 3s ease smooth
+rotate nebula 3 over 2s delay 2s
+fade nebula to 0.6 over 1s delay 3.5s
+wait 5s
+push 0.6
+
+# --- 3. Counter with source, unverified badge, pulse and shake
+count 6500 suffix " ly" label "Distance to the Pillars" over 2s as dist enter spin
+source dist "NASA" https://science.nasa.gov
+unverified dist
+pulse dist 0.2 over 0.6s delay 2s
+shake 14 over 0.4s delay 2.2s
+wait 3.5s
+wipe 0.6
+
+# --- 4. Bar chart with pen annotations
+bars "Pen tools" "Arrow" 40 "Circle" 65 "Box" 80 "Highlight" 95 over 3s enter rise
+circle at 1450 560 radius 150 over 0.6s delay 3s
+box at 300 820 size 500 120 over 0.6s delay 3.3s
+highlight from 320 880 to 780 880 over 0.6s delay 3.6s
+wait 4.5s
+blur 0.6
+
+# --- 5. Line chart with snap camera
+line "Growth" "Q1" 2 "Q2" 5 "Q3" 9 "Q4" 20 over 3s as growth enter slide_left
+camera to 1500 350 zoom 1.5 over 0.8s ease snap delay 3s
+wait 4.5s
+zoom
+
+# --- 6. Headline with marker sweeps
+headline "Studio ships every feature at once" paper "THE DAILY CANVAS" body "Code and hand editing stay perfectly in sync." mark "every feature" over 3s enter drop
+wait 4s
+crossfade 0.6
+
+# --- 7. Turtle code: variables, loops, move along a curve, wiggle
+let gap = 380
+say "Loops draw *patterns*" at 960 220 beat 0.25s as title
+repeat 3
+  wait 0.3s
+end
+for i from 0 to 3
+  arrow from (250 + i*gap) 800 to (450 + i*gap) 650 over 0.4s
+  wait 0.3s
+end
+move title to 960 500 curve 120 over 1.2s ease spring
+wiggle title over 0.8s delay 1.2s
+scale title 1.2 over 0.5s delay 2s
+wait 3s
+`,
+  },
 ];
