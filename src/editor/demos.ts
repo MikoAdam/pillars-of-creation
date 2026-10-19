@@ -67,7 +67,7 @@ wait 3s
 style radius 12
 
 # --- 1. Title card
-say "Star Formation in the *Eagle Nebula*" beat 0.35s enter fade exit fade
+say "Star Formation in the *Eagle Nebula*" at 960 520 beat 0.35s enter fade exit fade
 wait 3s
 crossfade 0.8
 
@@ -75,8 +75,6 @@ crossfade 0.8
 show photo @pillars as nebula enter fade
 zoom nebula 1.0 to 1.12 over 6s ease smooth
 caption nebula "Fig. 1 — The Pillars of Creation, M16"
-camera to 1050 500 zoom 1.08 over 5s ease smooth
-rotate nebula 1 over 4s delay 1s
 fade nebula to 0.85 over 1s delay 4.5s
 wait 6s
 wipe 0.7
@@ -92,15 +90,15 @@ crossfade 0.7
 
 # --- 4. Results with annotations
 bars "Observed protostars by region" "Pillar I" 40 "Pillar II" 65 "Pillar III" 80 "Periphery" 95 over 3s enter rise
-box at 300 820 size 500 120 over 0.6s delay 3.2s
-highlight from 320 880 to 780 880 over 0.6s delay 3.6s
-circle at 1450 560 radius 150 over 0.6s delay 4s
+highlight from 90 128 to 1240 128 over 0.6s delay 3.2s
+box at 1400 300 size 440 640 over 0.6s delay 3.6s
+circle at 298 640 radius 110 over 0.6s delay 4s
 wait 5s
 push 0.7
 
 # --- 5. Trend with focused camera
 line "Publications per year" "2019" 2 "2020" 5 "2021" 9 "2022" 20 over 3s as growth enter fade
-camera to 1500 350 zoom 1.3 over 1.2s ease smooth delay 3s
+camera to 1180 560 zoom 1.2 over 1.2s ease smooth delay 3s
 wait 5s
 blur 0.6
 
@@ -119,7 +117,8 @@ for i from 0 to 3
 end
 move title to 960 420 curve 40 over 1.2s ease smooth
 scale title 1.1 over 0.6s delay 1.4s
-wiggle title over 0.4s delay 2.2s
+rotate title -2 over 0.6s delay 2.2s
+wiggle title over 0.4s delay 2.8s
 wait 3.5s
 `,
   },
