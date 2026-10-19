@@ -98,7 +98,7 @@ export function lex(src: string): LexLine[] {
         if (negNum) i++;
         while (i < raw.length && (isDigit(raw[i]) || raw[i] === ".")) i++;
         const numText = raw.slice(startCol, i);
-        const v = Number(numText);
+        let v = Number(numText);
         if (Number.isNaN(v)) throw new LangError(`Bad number "${numText}"`, line, startCol, i - startCol);
         let isDur = false;
         if (raw[i] === "s" && !isId(raw[i + 1] ?? "")) {
@@ -114,6 +114,11 @@ export function lex(src: string): LexLine[] {
       }
       if (isIdStart(c)) {
         while (i < raw.length && isId(raw[i])) i++;
+        // legacy place names keep hyphens together: Nordrhein-Westfalen
+        while (raw[i] === "-" && /[A-Za-z]/.test(raw[i + 1] ?? "")) {
+          i++;
+          while (i < raw.length && isId(raw[i])) i++;
+        }
         push("ident", raw.slice(startCol, i), raw.slice(startCol, i));
         continue;
       }
@@ -125,6 +130,8 @@ export function lex(src: string): LexLine[] {
       if (c === "(") { i++; push("lparen", c, c); continue; }
       if (c === ")") { i++; push("rparen", c, c); continue; }
       if (c === "=") { i++; push("eq", c, c); continue; }
+      if (c === ":") { i++; push("colon", c, c); continue; }
+      if (c === ",") { i++; push("comma", c, c); continue; }
       throw new LangError(`Unexpected character "${c}"`, line, startCol);
     }
     const indent = /^[ \t]*/.exec(raw)![0];
