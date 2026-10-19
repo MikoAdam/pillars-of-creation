@@ -1,7 +1,8 @@
 import { LangError } from "./lexer";
 import { FONT_CHOICES } from "@/render/theme";
 import { parse, type Arg, type Expr, type Span, type Stmt } from "./parser";
-import { MAP_COLORS, MAP_COLOR_NAMES, findCountry, findRegion, fitBbox, geoReady, suggest, type GeoFeature } from "@/render/geo";
+import { MAP_COLORS, MAP_COLOR_NAMES, findCountry, findRegion, fitBbox, geoReady, normName, suggest, territoriesOf, type GeoFeature } from "@/render/geo";
+import { EFFECTS, type EffectName } from "@/render/effectsSymbols";
 import { SYMBOLS, type SymbolName } from "@/render/symbols";
 import type { MapFill } from "@/render/scenes/map";
 import { addSeg, emptyCamera, sample, EASES, EASE_NAMES, FX_STYLES, type FxStyle, type ObjKind, type Seg, type TObj, type Timeline, type Track, type Trans } from "./timeline";
@@ -1041,6 +1042,22 @@ export function interpret(src: string): Timeline {
 
   exec(prog.stmts, true);
   if (needGeo.size) tl.needsGeo = [...needGeo];
+  // legend auto: snapshot every country fill in command order, one per colour
+  if (legendObj?.data.auto) {
+    const entries: { label: string; color: string; t0: number }[] = [];
+    const seen = new Set<string>();
+    for (const o of tl.objects) {
+      if (o.kind !== "map") continue;
+      for (const f of o.data.fills as (MapFill & { isRegion?: boolean })[]) {
+        if (f.isRegion || !f.feature || seen.has(f.color)) continue;
+        seen.add(f.color);
+        entries.push({ label: f.feature.name, color: f.color, t0: legendObj.data.autoFrom });
+      }
+    }
+    legendObj.data.entries = entries;
+    const w = Math.max(160, ...entries.map((e) => e.label.length * 10 + 64));
+    legendObj.box = [W - 19 - w, 19, w, entries.length * 34 + 32];
+  }
   bump(cursor);
   tl.duration = Math.max(1, maxT + 0.5);
   for (const o of tl.objects) if (o.end === Infinity) o.end = tl.duration;
