@@ -1,6 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video, RotateCcw } from "lucide-react";
+import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video, RotateCcw, Film } from "lucide-react";
+import { ExportDialog } from "@/editor/ExportDialog";
+import { VoicePanel } from "@/editor/VoicePanel";
+import { deleteAudio, loadAudio, saveAudio, type AudioItem } from "@/editor/audioStore";
+import { cuesToCode, transcribe } from "@/editor/transcribe";
 import { run } from "@/lang/interpreter";
 import { styleValues, type Timeline, type TObj } from "@/lang/timeline";
 import { insertAtTime, removeFx, resetStyle, setStyle, writeFx, writeMove, writeOver, writeProp, writeScale, writeStart } from "@/lang/writeback";
@@ -63,6 +67,11 @@ function Studio() {
   const [assets, setAssets] = useState<Assets>(new Map());
   const [notice, setNotice] = useState<string | null>(null);
   const loaded = useRef(false);
+  const [voices, setVoices] = useState<AudioItem[]>([]);
+  const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  useEffect(() => { void loadAudio().then(setVoices); }, []);
 
   // load autosave
   useEffect(() => {
@@ -126,6 +135,51 @@ function Studio() {
     if (!playing && tRef.current >= total - 0.01) seek(0);
     setPlaying((p) => !p);
   }, [playing, total, seek]);
+
+  // voiceover follows the playhead
+  const voice = voices.find((v) => v.name === timeline.voice);
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing && voice) { a.currentTime = tRef.current; void a.play().catch(() => {}); } else a.pause();
+  }, [playing, voice]);
+  const scrub = useCallback((v: number) => {
+    seek(v);
+    const a = audioRef.current;
+    if (a && playing) a.currentTime = v;
+  }, [seek, playing]);
+
+  const appendLines = (base: string, lines: string) => base.replace(/\s*$/, "") + "\n\n" + lines + "\n";
+  const useVoice = (name: string, base = hist.codeRef.current) =>
+    /^voice\s+@\S+/m.test(base) ? base.replace(/^voice\s+@\S+/m, `voice @${name}`) : appendLines(base, `voice @${name}`);
+  const makeSubtitles = (name: string) => {
+    const item = voicesRef.current.find((v) => v.name === name);
+    if (item) void makeSubtitlesFor(item);
+  };
+  const uploadVoice = async (f: File) => {
+    const name = uniqueName(f.name, [...voices.map((v) => v.name), ...media.map((m) => m.name)]);
+    try { await saveAudio(name, f); } catch { setNotice("Couldn't save the audio in this browser; it will be lost on reload."); }
+    const item = { name, blob: f as Blob, url: URL.createObjectURL(f) };
+    setVoices((v) => [...v, item]);
+    hand(useVoice(name));
+    void makeSubtitlesFor(item);
+  };
+  const voicesRef = useRef<AudioItem[]>([]);
+  voicesRef.current = voices;
+  const makeSubtitlesFor = async (item: AudioItem) => {
+    setVoiceStatus("Preparing speech recognition…");
+    try {
+      const cues = await transcribe(item.blob, (p) =>
+        setVoiceStatus(p.stage === "download" ? `Downloading speech model (first time only)… ${Math.round(p.progress)}%` : "Listening and writing subtitles…"));
+      if (!cues.length) { setVoiceStatus("No speech found in this audio."); return; }
+      let next = hist.codeRef.current.replace(/\n*# Subtitles \(made automatically[^\n]*\n(subtitle [^\n]*\n?)*/g, "\n");
+      next = appendLines(useVoice(item.name, next), cuesToCode(cues, item.name));
+      hand(next);
+      setVoiceStatus(`Added ${cues.length} subtitle lines to the end of the script.`);
+    } catch (e) {
+      setVoiceStatus(`Couldn't make subtitles: ${(e as Error).message}`);
+    }
+  };
 
   // global shortcuts (outside text fields)
   useEffect(() => {
@@ -208,6 +262,8 @@ function Studio() {
 
   return (
     <main className="flex h-screen min-h-[640px] flex-col bg-background text-foreground">
+      {voice && <audio ref={audioRef} src={voice.url} preload="auto" hidden />}
+      {exporting && <ExportDialog timeline={timeline} theme={theme} assets={assets} voice={voice?.blob} onClose={() => setExporting(false)} />}
       <header className="flex h-11 shrink-0 items-center justify-between border-b border-border px-4">
         <div className="flex items-baseline gap-3">
           <h1 className="font-display text-lg font-semibold tracking-tight">Paint &amp; Turtle</h1>
@@ -233,6 +289,7 @@ function Studio() {
             onSet={(k, v) => { const next = setStyle(hist.codeRef.current, timeline, k, v); if (next !== hist.codeRef.current) hist.setTyped(next); }}
             onReset={(k) => hand(resetStyle(hist.codeRef.current, timeline, k))}
           />
+          <button onClick={() => { setPlaying(false); setExporting(true); }} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 font-semibold text-primary-foreground"><Film className="h-3.5 w-3.5" /> Export</button>
           <Link to="/preview" className="text-muted-foreground hover:text-foreground">Scene preview</Link>
         </div>
       </header>
@@ -244,6 +301,15 @@ function Studio() {
             onUpload={(f) => void addFiles(f)}
             onInsert={insertPhoto}
             onRemove={(n) => { const next = media.filter((m) => m.name !== n); setMedia(next); saveMedia(next); }}
+          />
+          <VoicePanel
+            voices={voices}
+            active={timeline.voice}
+            status={voiceStatus}
+            onUpload={(f) => void uploadVoice(f)}
+            onUse={(n) => hand(useVoice(n))}
+            onSubtitles={makeSubtitles}
+            onRemove={(n) => { setVoices((v) => v.filter((x) => x.name !== n)); void deleteAudio(n); }}
           />
           <div className="min-h-0 flex-1">
             <CodeEditor
@@ -305,7 +371,7 @@ function Studio() {
                     {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     {playing ? "Pause" : "Play"}
                   </button>
-                  <input type="range" min={0} max={total} step={1 / 30} value={Math.min(t, total)} onChange={(e) => seek(Number(e.target.value))} className="flex-1 accent-primary" />
+                  <input type="range" min={0} max={total} step={1 / 30} value={Math.min(t, total)} onChange={(e) => scrub(Number(e.target.value))} className="flex-1 accent-primary" />
                   <span className="w-28 text-right font-mono text-xs tabular-nums text-muted-foreground">{fmt(t)} / {fmt(total)}</span>
                 </div>
                 {selectedObj && (
@@ -328,7 +394,7 @@ function Studio() {
               timeline={timeline}
               t={t}
               selectedId={selectedId}
-              onSeek={seek}
+              onSeek={scrub}
               onSelect={setSelectedId}
               onOver={(span, d) => hand(writeOver(hist.codeRef.current, span, d))}
               onStart={(info, s0) => hand(writeStart(hist.codeRef.current, info, s0))}

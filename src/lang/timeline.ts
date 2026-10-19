@@ -119,6 +119,10 @@ export interface Timeline {
   stmts: StmtInfo[];
   transitions: (Trans | { t: number; d: 0; kind: "cut" })[];
   camera: Camera;
+  /** voiceover audio asset name (plays from 0s) */
+  voice?: string | undefined;
+  /** timed subtitle lines, absolute seconds */
+  subs?: { t0: number; t1: number; text: string; line: number }[];
 }
 
 export const emptyCamera = (): Camera => ({ pos: { base: [960, 540], segs: [] }, zoom: { base: [1], segs: [] }, shakes: [] });

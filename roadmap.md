@@ -1,9 +1,8 @@
 # Roadmap
 
 - [x] Showcase demo restyled as a professional university briefing
-- [ ] Export: 1080p / 4K MP4 (WebCodecs) with progress, WebM fallback — next
-- [ ] Subtitles + voiceover (audio file, synced captions)
+- [x] Export: 1080p / 4K / vertical MP4 (WebCodecs), part-of-video range, WebM fallback
+- [x] Voiceover + automatic subtitles (open-source Whisper running in the browser)
+- [ ] Rebuild the map creator (github.com/MikoAdam/MikoAdam.github.io) inside this app with integrated AI — next phase, needs review of the original and Lovable Cloud for AI
 - [ ] Lower-thirds, chapter title cards, end credits
 - [ ] Callouts on photos, timeline/pie/comparison-table diagrams
-- [ ] Map scene with pins and routes (future link to the map creator)
-- Map creator stays a separate site for now; link the two.

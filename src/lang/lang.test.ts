@@ -90,3 +90,26 @@ d2("drag and drop matches the script", () => {
     e2(tl.objects[0].enterFx?.style).toBe("pop");
   });
 });
+
+import { describe as d3, it as i3, expect as e3 } from "vitest";
+import { run as run3 } from "./interpreter";
+import { toCues } from "@/editor/transcribe";
+d3("voice and subtitles", () => {
+  i3("subtitle lines become timed cues and extend the video", () => {
+    const r = run3('project "T"\nvoice @narration\nsubtitle 1 2.5 "Hello there"\nsubtitle 9 12 "Bye"');
+    e3(r.ok).toBe(true);
+    if (!r.ok) return;
+    e3(r.timeline.voice).toBe("narration");
+    e3(r.timeline.subs?.map((s) => [s.t0, s.t1, s.text])).toEqual([[1, 2.5, "Hello there"], [9, 12, "Bye"]]);
+    e3(r.timeline.duration).toBeGreaterThanOrEqual(12);
+  });
+  i3("rejects a subtitle that ends before it starts", () => {
+    e3(run3('subtitle 3 2 "x"').ok).toBe(false);
+  });
+  i3("long speech is split into short cues covering the same time", () => {
+    const cues = toCues([{ timestamp: [0, 10], text: "word ".repeat(40) }], 10, 70);
+    e3(cues.length).toBeGreaterThan(1);
+    e3(cues[0].t0).toBe(0);
+    e3(cues[cues.length - 1].t1).toBe(10);
+  });
+});
