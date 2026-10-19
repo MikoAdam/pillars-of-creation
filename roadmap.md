@@ -4,6 +4,8 @@
 - [x] Export: 1080p / 4K / vertical MP4 (WebCodecs), part-of-video range, WebM fallback
 - [x] Voiceover + automatic subtitles (open-source Whisper running in the browser)
 - [x] Rebuild the map creator inside the studio (countries, regions, attacks, symbols, labels, year, legend, map camera, map tool)
+- [x] README for GitHub sync
+- [ ] Map scene parity with the original map creator — scope being confirmed with the user (10m country outlines, rename/unrename labels, richer label styling)
 - [ ] AI for maps / Generate from topic — waits on the user's go-ahead (needs Lovable Cloud)
 - [ ] Lower-thirds, chapter title cards, end credits
 - [ ] Callouts on photos, timeline/pie/comparison-table diagrams
