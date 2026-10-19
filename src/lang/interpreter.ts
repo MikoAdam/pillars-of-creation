@@ -405,6 +405,7 @@ export function interpret(src: string): Timeline {
         return;
       }
       case "line": {
+        if (s.legacy) return mapCommand({ ...s, name: "route" }, p, start); // connection line
         const title = str(src(0), "a chart title", near);
         const points: { x: string; y: number }[] = [];
         for (let i = 1; i < p.pos.length; i += 2) {
@@ -438,6 +439,7 @@ export function interpret(src: string): Timeline {
       }
       case "arrow":
       case "highlight": {
+        if (s.legacy && s.name === "arrow") return mapCommand({ ...s, name: "tag" }, p, start); // pointer label
         const fg = kw1(p, "from"), tg = kw1(p, "to");
         if (!fg || !tg) err(`${s.name} needs "from x y to x y"`, near);
         const x1 = num(fg![1], "x", fg![0]), y1 = num(fg![2], "y", fg![0]);
@@ -500,6 +502,21 @@ export function interpret(src: string): Timeline {
         return;
       }
       case "zoom": {
+        if (s.legacy && src(0)?.kind === "word") {
+          // zoom: COUNTRY — frame the country smoothly, block 0.6s
+          if (!geoReady("countries")) { needGeo.add("countries"); return; }
+          const f = country(src(0), s);
+          if (f) {
+            const m = needMap(s);
+            const c = fitBbox(f.bbox, 0.07);
+            camSeg(m.data.cam.pos, [{ v: c.lat }, { v: c.lng }], p, s, start, { v: 0.6 }, "smooth");
+            camSeg(m.data.cam.zoom, [{ v: Math.min(8, c.zoom) }], p, s, start, { v: 0.6 }, "smooth");
+            cursor = Math.max(cursor, start + 0.6);
+            bump(cursor);
+            m.lines.push(s.line);
+          }
+          return;
+        }
         const first = src(0);
         if (!first || first.kind === "num") {
           // zoom transition
