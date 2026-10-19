@@ -54,6 +54,7 @@ const KW: Record<string, Record<string, number>> = {
   attack: { bend: 1, width: 1, head: 1 },
   pin: { size: 1 },
   label: { size: 1 },
+  rename: { at: 2 },
 };
 
 export const MAP_ANIMS = ["pulse", "fade", "radial", "sweep", "none"] as const;
