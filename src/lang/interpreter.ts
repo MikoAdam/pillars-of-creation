@@ -768,6 +768,25 @@ export function interpret(src: string): Timeline {
       case "attack":
       case "route": {
         if (s.legacy) {
+          if (s.name === "route") {
+            // line: ORIGIN, TARGET, COLOR — two countries → dashed straight line; coordinates → thin arrow
+            if (!geoReady("countries")) { needGeo.add("countries"); return true; }
+            if (A[0] && (A[0].kind === "num" || A[0].kind === "expr")) {
+              const aLL: [number, number] = [num(A[1], "longitude", A[0]).v, num(A[0], "latitude", near).v];
+              const bLL: [number, number] = A[3] ? [num(A[3], "longitude", A[2]).v, num(A[2], "latitude", A[1] ?? near).v] : aLL;
+              const col = A[4] ? color(A[4], s) : MAP_COLORS["blue"];
+              p.kw["over"] = [[{ kind: "word", name: "over", tok: s.nameTok }, { kind: "num", v: 0.8, isDur: true, tok: s.nameTok }]];
+              geoObj("attack", p, s, start, { a: aLL, b: bLL, color: col, bend: 0, width: 0.5, head: 0.5 });
+              return true;
+            }
+            const f1 = A[0] ? country(A[0], s) : null;
+            const f2 = A[1] ? country(A[1], s) : null;
+            const col = A[2] ? color(A[2], s) : MAP_COLORS["blue"];
+            if (!f1 || !f2) return true; // the original silently skips unresolved endpoints
+            p.kw["over"] = [[{ kind: "word", name: "over", tok: s.nameTok }, { kind: "num", v: 0.8, isDur: true, tok: s.nameTok }]];
+            geoObj("route", p, s, start, { a: f1.center, b: f2.center, color: col, bend: 0, width: 2, head: 0, straight: true });
+            return true;
+          }
           // attack: E1, E2, COLOR[, CURVE, WIDTH, HEAD, DUR] — or the named form:
           // attack: from LAT LNG, to LAT LNG, color C, curve N, width N, head N, dur MS
           let ai = 0;
