@@ -576,8 +576,14 @@ export function interpret(src: string): Timeline {
 
   // ---------- maps ----------
   const measureBubble = (text: string) => {
-    const lines = Math.max(1, Math.ceil((text.length * 15) / 460));
-    return { w: Math.min(508, text.length * 15 + 48), h: lines * 40 + 30 };
+    // dark card: 20px text, padding 21x29, max width 506px (380 CSS px scaled)
+    const lines = Math.max(1, Math.ceil((text.length * 10.4) / 448));
+    return { w: Math.min(506, Math.max(160, text.length * 10.4 + 58)), h: lines * 32 + 42 };
+  };
+  const measureSubtitle = (text: string) => {
+    // subtitle bubble: fixed 72% width capped at 1146px, bottom-centre
+    const lines = Math.max(1, Math.ceil((text.length * 10.4) / 1060));
+    return { w: 1146, h: lines * 34 + 42 };
   };
   const nearOf = (s: Extract<Stmt, { kind: "cmd" }>) => ({ tok: s.nameTok });
 
