@@ -21,3 +21,4 @@
 - Camera, entrance/exit effects and transitions are applied in `src/engine/renderTimeline.ts`, not in scene renderers; the camera resets at each scene change. Why: scene renderers stay untouched and pure.
 - Export (`src/engine/exportVideo.ts`) renders through `renderTimeline` with a `scale` option for larger outputs; never a separate render path. Why: export must match the preview.
 - Speech-to-text runs locally with Whisper via transformers.js in a web worker (`src/editor/whisperWorker.ts`); subtitles are written into the script as `subtitle t0 t1 "text"` lines. Why: user wants open-source, no paid service, and code stays the single source of truth.
+- The app is fully client-side: no Lovable Cloud, no server functions or API routes; the script autosaves to localStorage and voiceovers to IndexedDB. Why: user wants nothing uploaded and no accounts or paid services — introduce a backend only when the user asks.
