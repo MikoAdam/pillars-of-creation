@@ -15,7 +15,7 @@ import { applyStyle, getTheme, THEMES } from "@/render/theme";
 
 describe("looks", () => {
   it("there is exactly one look", () => expect(THEMES.length).toBe(1));
-  it("there are exactly three demos", () => expect(DEMOS.length).toBe(3));
+  it("there are exactly four demos", () => expect(DEMOS.length).toBe(4));
   it("style lines override the look and reset removes them", () => {
     const base = 'project "X" theme clean_modern\nsay "hi"\n';
     const tl1 = (run(base) as any).timeline;
