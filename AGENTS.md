@@ -19,3 +19,5 @@
 - `src/engine/renderTimeline.ts` layers the scene renderers with `transparent: true`. Why: reuse scene drawing without changing it.
 - Every drag-and-drop action in the studio has a matching script command/keyword (enter/exit, rotate, opacity, delay, camera, shake, pulse, wiggle, transitions); new hand features must add the script form first. Why: script and hand editing stay equal in power.
 - Camera, entrance/exit effects and transitions are applied in `src/engine/renderTimeline.ts`, not in scene renderers; the camera resets at each scene change. Why: scene renderers stay untouched and pure.
+- Export (`src/engine/exportVideo.ts`) renders through `renderTimeline` with a `scale` option for larger outputs; never a separate render path. Why: export must match the preview.
+- Speech-to-text runs locally with Whisper via transformers.js in a web worker (`src/editor/whisperWorker.ts`); subtitles are written into the script as `subtitle t0 t1 "text"` lines. Why: user wants open-source, no paid service, and code stays the single source of truth.
