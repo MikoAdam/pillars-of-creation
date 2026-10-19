@@ -91,8 +91,8 @@ crossfade 0.7
 # --- 4. Results with annotations
 bars "Observed protostars by region" "Pillar I" 40 "Pillar II" 65 "Pillar III" 80 "Periphery" 95 over 3s enter rise
 highlight from 90 128 to 1240 128 over 0.6s delay 3.2s
-box at 1400 300 size 440 640 over 0.6s delay 3.6s
-circle at 298 640 radius 110 over 0.6s delay 4s
+box at 80 590 size 440 360 over 0.6s delay 3.6s
+circle at 1620 324 radius 64 over 0.6s delay 4s
 wait 5s
 push 0.7
 
