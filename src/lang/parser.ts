@@ -70,9 +70,11 @@ function parseArgs(ts: TokStream): Arg[] {
   while (!ts.done()) {
     const t = ts.peek();
     const nextIsOp = ts.peek(1)?.kind === "op";
+    if (t.kind === "comma") { ts.next(); continue; } // commas are optional separators
     if (t.kind === "str") { ts.next(); args.push({ kind: "str", v: t.value as string, tok: t }); continue; }
     if (t.kind === "asset") { ts.next(); args.push({ kind: "asset", name: t.value as string, tok: t }); continue; }
     if (t.kind === "url") { ts.next(); args.push({ kind: "url", v: t.text, tok: t }); continue; }
+    if (t.kind === "color") { ts.next(); args.push({ kind: "word", name: t.text, tok: t }); continue; }
     if (t.kind === "num" && !nextIsOp) { ts.next(); args.push({ kind: "num", v: t.value as number, isDur: !!t.isDur, tok: t }); continue; }
     if (t.kind === "ident" && !nextIsOp) { ts.next(); args.push({ kind: "word", name: t.text, tok: t }); continue; }
     if (t.kind === "num" || t.kind === "ident" || t.kind === "lparen" || t.kind === "op") {
@@ -81,6 +83,57 @@ function parseArgs(ts: TokStream): Arg[] {
     }
     throw new LangError(`Unexpected "${t.text}"`, t.line, t.col, t.text.length);
   }
+  return args;
+}
+
+/** One chunk of tokens between commas in a legacy `name: a, b, c` line. */
+function legacyChunk(chunk: Tok[], line: number): Arg[] {
+  if (!chunk.length) return [];
+  const joined: Tok = {
+    kind: "ident", text: chunk.map((t) => t.text).join(" "), value: chunk.map((t) => t.text).join(" "),
+    start: chunk[0].start, end: chunk[chunk.length - 1].end, line, col: chunk[0].col,
+  };
+  if (chunk.length === 1) {
+    const t = chunk[0];
+    if (t.kind === "str") return [{ kind: "str", v: t.value as string, tok: t }];
+    if (t.kind === "num") return [{ kind: "num", v: t.value as number, isDur: !!t.isDur, tok: t }];
+    if (t.kind === "color") return [{ kind: "word", name: t.text, tok: t }];
+    if (t.kind === "url") return [{ kind: "url", v: t.text, tok: t }];
+  }
+  if (chunk.every((t) => t.kind === "ident")) return [{ kind: "word", name: joined.text, tok: joined }];
+  // mixed chunk (named attack fields like `from 52.5 13.4`, or math) — keep tokens, math still evaluates
+  if (chunk.some((t) => t.kind === "op" || t.kind === "lparen")) {
+    const ts = new TokStream(chunk, line);
+    try {
+      const e = parseExpr(ts);
+      if (ts.done()) return [{ kind: "expr", expr: e, tok: chunk[0] }];
+    } catch {
+      /* fall through to word */
+    }
+    return [{ kind: "word", name: joined.text, tok: joined }];
+  }
+  return chunk.map((t) =>
+    t.kind === "num" ? { kind: "num", v: t.value as number, isDur: !!t.isDur, tok: t }
+      : t.kind === "color" ? { kind: "word", name: t.text, tok: t }
+        : { kind: "word", name: t.text, tok: t });
+}
+
+function parseLegacyArgs(toks: Tok[], colonIdx: number, line: number): Arg[] {
+  const args: Arg[] = [];
+  let chunk: Tok[] = [];
+  let depth = 0;
+  for (let i = colonIdx + 1; i < toks.length; i++) {
+    const t = toks[i];
+    if (t.kind === "lparen") depth++;
+    if (t.kind === "rparen") depth--;
+    if (t.kind === "comma" && depth <= 0) {
+      args.push(...legacyChunk(chunk, line));
+      chunk = [];
+      continue;
+    }
+    chunk.push(t);
+  }
+  args.push(...legacyChunk(chunk, line));
   return args;
 }
 
