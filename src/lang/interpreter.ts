@@ -616,9 +616,9 @@ export function interpret(src: string): Timeline {
     return { ll: (f?.center ?? [0, 0]) as [number, number], used: 1, spans: [] as (Span | undefined)[], nameSpan: [a.tok.start, a.tok.end] as Span };
   }
 
-  function camSeg(tr: Track, to: NumV[], p: Parsed, s: Extract<Stmt, { kind: "cmd" }>, start: number, d: NumV) {
+  function camSeg(tr: Track, to: NumV[], p: Parsed, s: Extract<Stmt, { kind: "cmd" }>, start: number, d: NumV, ease?: string) {
     addSeg(tr, { t0: start, t1: start + Math.max(0, d.v), from: sample(tr, start), to: to.map((x) => x.v), line: s.line, col: s.nameTok.col,
-      toSpans: to.map((x) => x.span), overSpan: d.span, label: "fly", ...segMeta(p) });
+      toSpans: to.map((x) => x.span), overSpan: d.span, label: "fly", ease, ...segMeta(p) });
     bump(start + d.v);
   }
 
