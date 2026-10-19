@@ -21,7 +21,7 @@ export interface StmtBase {
   ll: LexLine;
 }
 export type Stmt =
-  | (StmtBase & { kind: "cmd"; name: string; nameTok: Tok; args: Arg[] })
+  | (StmtBase & { kind: "cmd"; name: string; nameTok: Tok; args: Arg[]; legacy?: boolean })
   | (StmtBase & { kind: "let"; name: string; expr: Expr })
   | (StmtBase & { kind: "repeat"; count: Expr; body: Stmt[]; endLine: number })
   | (StmtBase & { kind: "for"; v: string; from: Expr; to: Expr; step?: Expr | undefined; body: Stmt[]; endLine: number });
@@ -160,10 +160,18 @@ export function parse(src: string): Program {
         return { body, endLine: ll.line };
       }
       idx++;
+      // legacy colon form: `name: a, b, c` — the name may be several idents (a country)
+      const colonIdx = toks.findIndex((t) => t.kind === "colon");
+      const legacy = colonIdx >= 1 && toks.slice(0, colonIdx).every((t) => t.kind === "ident");
       const ts = new TokStream(toks, ll.line);
-      if (first.kind !== "ident") throw new LangError("Line must start with a command", ll.line, first.col, first.text.length);
+      if (first.kind !== "ident" && !legacy) throw new LangError("Line must start with a command", ll.line, first.col, first.text.length);
       ts.next();
-      if (first.text === "let") {
+      if (legacy) {
+        const nameToks = toks.slice(0, colonIdx);
+        const name = nameToks.map((t) => t.text).join(" ");
+        const nameTok: Tok = { kind: "ident", text: name, value: name, start: nameToks[0].start, end: nameToks[nameToks.length - 1].end, line: ll.line, col: nameToks[0].col };
+        body.push({ kind: "cmd", name, nameTok, args: parseLegacyArgs(toks, colonIdx, ll.line), line: ll.line, ll, legacy: true });
+      } else if (first.text === "let") {
         const name = ts.next();
         if (!name || name.kind !== "ident") throw new LangError("Expected variable name after let", ll.line, first.end - ll.lineStart + 1);
         const eq = ts.next();
