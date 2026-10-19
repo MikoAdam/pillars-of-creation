@@ -13,7 +13,7 @@ export type StyleKey = (typeof STYLE_KEYS)[number];
 export const COMMANDS = [
   "project", "style", "show", "zoom", "scale", "move", "fade", "caption", "source", "unverified", "wait",
   "cut", "crossfade", "slide", "count", "bars", "line", "headline", "say", "arrow", "circle", "box",
-  "highlight", "rotate", "camera", "shake", "pulse", "wiggle", "wipe", "push", "whip", "blur", "let", "repeat", "for", "end",
+  "highlight", "voice", "subtitle", "rotate", "camera", "shake", "pulse", "wiggle", "wipe", "push", "whip", "blur", "let", "repeat", "for", "end",
 ];
 
 export type RunResult =
@@ -309,6 +309,20 @@ export function interpret(src: string): Timeline {
           value = k === "grain" ? Math.min(1, Math.max(0, value)) : Math.min(80, Math.max(0, value));
         }
         tl.style[k] = { value, span, line: s.line };
+        return;
+      }
+      case "voice": {
+        const a = src(0);
+        if (!a || a.kind !== "asset") err("Expected an @audio name after voice", a ?? near.tok ? { tok: s.nameTok } : near);
+        tl.voice = (a as { name: string }).name;
+        return;
+      }
+      case "subtitle": {
+        const a = num(src(0), "a start time", near).v, b = num(src(1), "an end time", near).v;
+        const text = str(src(2), "subtitle text", near);
+        if (b <= a) err("End time must be after start time", src(1)!);
+        (tl.subs ??= []).push({ t0: Math.max(0, a), t1: b, text, line: s.line });
+        bump(b);
         return;
       }
       case "wait": {

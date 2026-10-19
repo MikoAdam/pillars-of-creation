@@ -7,7 +7,8 @@ import { renderBarChart } from "@/render/scenes/barChart";
 import { renderLineChart } from "@/render/scenes/lineChart";
 import { renderHeadline } from "@/render/scenes/headlineHighlight";
 import { renderKineticText } from "@/render/scenes/kineticText";
-import { alpha } from "@/render/theme";
+import { alpha, bodyFont, fillRound } from "@/render/theme";
+import { wrapText } from "@/render/text";
 import { alive, cameraAt, EASES, sample, type Fx, type TObj, type Timeline, type Trans } from "@/lang/timeline";
 
 export interface Override {
@@ -32,8 +33,16 @@ function transAmount(tr: Trans | undefined, t: number) {
 }
 
 /** Render the whole timeline at time t. Pure function of its inputs. */
-export function renderTimeline(ctx: CanvasRenderingContext2D, tl: Timeline, theme: Theme, assets: Assets, t: number, override?: Override) {
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+export interface RenderOpts {
+  /** pixel scale of the output canvas relative to 1920x1080 (2 = 4K) */
+  scale?: number;
+  /** draw subtitle lines (default true) */
+  subtitles?: boolean;
+}
+
+export function renderTimeline(ctx: CanvasRenderingContext2D, tl: Timeline, theme: Theme, assets: Assets, t: number, override?: Override, opts?: RenderOpts) {
+  const k = opts?.scale ?? 1;
+  ctx.setTransform(k, 0, 0, k, 0, 0);
   ctx.globalAlpha = 1;
   ctx.fillStyle = theme.colors.background;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -42,10 +51,35 @@ export function renderTimeline(ctx: CanvasRenderingContext2D, tl: Timeline, them
     if (!alive(o, t)) continue;
     drawObject(ctx, o, theme, assets, t, cam, override?.id === o.id ? override : undefined);
   }
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.setTransform(k, 0, 0, k, 0, 0);
   ctx.globalAlpha = 1;
   ctx.filter = "none";
   drawGrain(ctx, WIDTH, HEIGHT, Math.floor(t * FPS), theme.grain);
+  if (opts?.subtitles !== false) {
+    const sub = subtitleAt(tl, t);
+    if (sub) drawSubtitle(ctx, theme, sub, WIDTH / 2, HEIGHT - 70, 1400, 40);
+  }
+}
+
+export function subtitleAt(tl: Timeline, t: number) {
+  return tl.subs?.find((s) => t >= s.t0 && t < s.t1)?.text;
+}
+
+/** Subtitle pill, bottom-anchored at (cx, bottom). */
+export function drawSubtitle(ctx: CanvasRenderingContext2D, theme: Theme, text: string, cx: number, bottom: number, maxW: number, size: number) {
+  ctx.save();
+  ctx.font = bodyFont(theme, size, 600);
+  const lines = wrapText(ctx, text, maxW).slice(0, 3);
+  const lh = size * 1.3, padX = size * 0.6, padY = size * 0.35;
+  const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + padX * 2;
+  const h = lines.length * lh + padY * 2;
+  ctx.fillStyle = "rgba(15, 23, 42, 0.78)";
+  fillRound(ctx, cx - w / 2, bottom - h, w, h, size * 0.4);
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  lines.forEach((l, i) => ctx.fillText(l, cx, bottom - h + padY + lh * (i + 0.5)));
+  ctx.restore();
 }
 
 /** Entrance/exit look: a = 0 (hidden) .. 1 (fully shown). */
