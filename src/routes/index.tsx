@@ -1,6 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video, RotateCcw } from "lucide-react";
+import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video, RotateCcw, Film } from "lucide-react";
+import { ExportDialog } from "@/editor/ExportDialog";
+import { VoicePanel } from "@/editor/VoicePanel";
+import { deleteAudio, loadAudio, saveAudio, type AudioItem } from "@/editor/audioStore";
+import { cuesToCode, transcribe } from "@/editor/transcribe";
 import { run } from "@/lang/interpreter";
 import { styleValues, type Timeline, type TObj } from "@/lang/timeline";
 import { insertAtTime, removeFx, resetStyle, setStyle, writeFx, writeMove, writeOver, writeProp, writeScale, writeStart } from "@/lang/writeback";
@@ -63,6 +67,11 @@ function Studio() {
   const [assets, setAssets] = useState<Assets>(new Map());
   const [notice, setNotice] = useState<string | null>(null);
   const loaded = useRef(false);
+  const [voices, setVoices] = useState<AudioItem[]>([]);
+  const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  useEffect(() => { void loadAudio().then(setVoices); }, []);
 
   // load autosave
   useEffect(() => {
@@ -126,6 +135,64 @@ function Studio() {
     if (!playing && tRef.current >= total - 0.01) seek(0);
     setPlaying((p) => !p);
   }, [playing, total, seek]);
+
+  // voiceover follows the playhead
+  const voice = voices.find((v) => v.name === timeline.voice);
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing && voice) { a.currentTime = tRef.current; void a.play().catch(() => {}); } else a.pause();
+  }, [playing, voice]);
+  const scrub = useCallback((v: number) => {
+    seek(v);
+    const a = audioRef.current;
+    if (a && playing) a.currentTime = v;
+  }, [seek, playing]);
+
+  const appendLines = (base: string, lines: string) => base.replace(/\s*$/, "") + "\n\n" + lines + "\n";
+  const useVoice = (name: string, base = hist.codeRef.current) =>
+    /^voice\s+@\S+/m.test(base) ? base.replace(/^voice\s+@\S+/m, `voice @${name}`) : appendLines(base, `voice @${name}`);
+  const makeSubtitles = async (name: string) => {
+    const item = voices.find((v) => v.name === name) ?? null;
+    if (!item) return;
+    setVoiceStatus("Preparing speech recognition…");
+    try {
+      const cues = await transcribe(item.blob, (p) =>
+        setVoiceStatus(p.stage === "download" ? `Downloading speech model (first time only)… ${Math.round(p.progress)}%` : "Listening and writing subtitles…"));
+      if (!cues.length) { setVoiceStatus("No speech found in this audio."); return; }
+      let next = hist.codeRef.current.replace(/\n*# Subtitles \(made automatically[^\n]*\n(subtitle [^\n]*\n?)*/g, "\n");
+      next = appendLines(useVoice(name, next), cuesToCode(cues, name));
+      hand(next);
+      setVoiceStatus(`Added ${cues.length} subtitle lines to the end of the script.`);
+    } catch (e) {
+      setVoiceStatus(`Couldn't make subtitles: ${(e as Error).message}`);
+    }
+  };
+  const uploadVoice = async (f: File) => {
+    const name = uniqueName(f.name, [...voices.map((v) => v.name), ...media.map((m) => m.name)]);
+    try { await saveAudio(name, f); } catch { setNotice("Couldn't save the audio in this browser; it will be lost on reload."); }
+    const item = { name, blob: f as Blob, url: URL.createObjectURL(f) };
+    setVoices((v) => [...v, item]);
+    hand(useVoice(name));
+    voicesRef.current = [...voicesRef.current, item];
+    void makeSubtitlesFor(item);
+  };
+  const voicesRef = useRef<AudioItem[]>([]);
+  voicesRef.current = voices;
+  const makeSubtitlesFor = async (item: AudioItem) => {
+    setVoiceStatus("Preparing speech recognition…");
+    try {
+      const cues = await transcribe(item.blob, (p) =>
+        setVoiceStatus(p.stage === "download" ? `Downloading speech model (first time only)… ${Math.round(p.progress)}%` : "Listening and writing subtitles…"));
+      if (!cues.length) { setVoiceStatus("No speech found in this audio."); return; }
+      let next = hist.codeRef.current.replace(/\n*# Subtitles \(made automatically[^\n]*\n(subtitle [^\n]*\n?)*/g, "\n");
+      next = appendLines(useVoice(item.name, next), cuesToCode(cues, item.name));
+      hand(next);
+      setVoiceStatus(`Added ${cues.length} subtitle lines to the end of the script.`);
+    } catch (e) {
+      setVoiceStatus(`Couldn't make subtitles: ${(e as Error).message}`);
+    }
+  };
 
   // global shortcuts (outside text fields)
   useEffect(() => {
