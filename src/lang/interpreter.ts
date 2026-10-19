@@ -714,10 +714,12 @@ export function interpret(src: string): Timeline {
       case "country":
       case "region": {
         const m = needMap(s);
-        let f: GeoFeature | null;
+        let f: GeoFeature | null = null;
         let i = 1;
-        if (s.name === "country") { if (!A[0]) err("Expected a country name", near); f = country(A[0], s); }
-        else {
+        if (s.name === "country") {
+          if (!A[0]) err("Expected a country name", near);
+          f = country(A[0], s);
+        } else {
           const rn = A[0], cn = A[1];
           if (!rn || !cn) err("region needs a region name and its country, e.g. region crimea ukraine red occupied", near);
           const rname = rn.kind === "str" ? rn.v : word(rn, "a region name", near);
@@ -726,9 +728,29 @@ export function interpret(src: string): Timeline {
           if (!geoReady("regions") || !geoReady("countries")) { needGeo.add("regions"); needGeo.add("countries"); f = null; }
           else {
             f = findRegion(rname, cname) ?? null;
-            if (!f) { const sg = suggest("regions", rname, cname); err(`Unknown region "${rname}" in ${cname}${sg.length ? `. Try ${sg.join(", ")}` : ""}`, rn); }
+            if (!f && !s.legacy) { const sg = suggest("regions", rname, cname); err(`Unknown region "${rname}" in ${cname}${sg.length ? `. Try ${sg.join(", ")}` : ""}`, rn); }
           }
         }
+        if (s.legacy) {
+          // the original silently skips unknown features
+          if (!f) return true;
+          const col = color(A[i], s);
+          let anim: MapFill["anim"] = "none";
+          let occupied = false;
+          for (const a of A.slice(i + 1)) {
+            if (a.kind !== "word") continue;
+            if (a.name === "occupied") occupied = true;
+            else if ((MAP_ANIMS as readonly string[]).includes(a.name)) anim = a.name as MapFill["anim"];
+          }
+          const d = FILL_DUR[anim];
+          if (s.name === "country") {
+            // countries also colour nearby territories of the same sovereign
+            applyFill(m, f, col, anim, d, occupied, false, start, s.line);
+            for (const t of territoriesOf(f)) applyFill(m, t, col, anim, d, false, false, start, s.line);
+          } else applyFill(m, f, col, anim, d, occupied, true, start, s.line);
+          return true;
+        }
+        if (!f) err(`Unknown ${s.name} "${A[0]!.kind === "str" ? A[0]!.v : (A[0] as any).text ?? (A[0] as any).name}"`, A[0]!);
         const col = color(A[i], s);
         let anim: MapFill["anim"] = "fade", occupied = false;
         for (const a of A.slice(i + 1)) {
