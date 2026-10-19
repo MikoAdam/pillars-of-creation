@@ -18,6 +18,7 @@ export const COMMANDS = [
   "cut", "crossfade", "slide", "count", "bars", "line", "headline", "say", "arrow", "circle", "box",
   "highlight", "voice", "subtitle", "rotate", "camera", "shake", "pulse", "wiggle", "wipe", "push", "whip", "blur",
   "map", "fly", "country", "region", "attack", "route", "pin", "bubble", "label", "tag", "year", "legend", "remove",
+  "cinematic", "effect", "clear", "clearregions", "rename", "unrename",
   "let", "repeat", "for", "end",
 ];
 
@@ -53,10 +54,11 @@ const KW: Record<string, Record<string, number>> = {
   attack: { bend: 1, width: 1, head: 1 },
   pin: { size: 1 },
   label: { size: 1 },
+  rename: { at: 2 },
 };
 
 export const MAP_ANIMS = ["pulse", "fade", "radial", "sweep", "none"] as const;
-export const REMOVE_WHAT = ["last", "arrows", "pins", "labels", "colors", "legend", "year", "all"] as const;
+export const REMOVE_WHAT = ["last", "arrows", "pins", "labels", "colors", "effects", "lines", "legend", "year", "all"] as const;
 
 interface Parsed {
   pos: Arg[];
@@ -86,6 +88,7 @@ export function interpret(src: string): Timeline {
   const bump = (t: number) => { if (t > maxT) maxT = t; };
   let curMap: TObj | undefined, legendObj: TObj | undefined, yearObj: TObj | undefined;
   const mapElems: (TObj | (MapFill & { line: number }))[] = [];
+  const markerStack: TObj[] = []; // pins / bubbles / labels / tags / effects, in script order
   const needGeo = new Set<"countries" | "regions">();
 
   const err = (msg: string, a: { tok: { line: number; col: number; text: string } }) => {
@@ -613,9 +616,10 @@ export function interpret(src: string): Timeline {
     return { ll: (f?.center ?? [0, 0]) as [number, number], used: 1, spans: [] as (Span | undefined)[], nameSpan: [a.tok.start, a.tok.end] as Span };
   }
 
-  function camSeg(tr: Track, to: NumV[], p: Parsed, s: Extract<Stmt, { kind: "cmd" }>, start: number, d: NumV) {
+  function camSeg(tr: Track, to: NumV[], p: Parsed, s: Extract<Stmt, { kind: "cmd" }>, start: number, d: NumV, ease?: string) {
+    const meta = segMeta(p);
     addSeg(tr, { t0: start, t1: start + Math.max(0, d.v), from: sample(tr, start), to: to.map((x) => x.v), line: s.line, col: s.nameTok.col,
-      toSpans: to.map((x) => x.span), overSpan: d.span, label: "fly", ...segMeta(p) });
+      toSpans: to.map((x) => x.span), overSpan: d.span, label: "fly", ...meta, ease: meta.ease ?? ease });
     bump(start + d.v);
   }
 
@@ -623,6 +627,7 @@ export function interpret(src: string): Timeline {
     const m = needMap(s);
     const o = makeObj(kind, p, s, start, [0, 0], [0, 0, 0, 0], { geo: true, map: m, ...data });
     mapElems.push(o);
+    if (kind === "pin" || kind === "bubble" || kind === "label" || kind === "tag" || kind === "effect") markerStack.push(o);
     return o;
   }
 

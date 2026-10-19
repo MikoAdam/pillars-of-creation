@@ -2,7 +2,11 @@
  * Geographic data for map scenes: Natural Earth country and region outlines
  * (public domain), Web Mercator math and the map camera projection.
  * Data loads once in the background; drawing stays a pure function of t.
+ *
+ * Lookup, aliases, curated centres, disputed-territory handling and sovereign-territory
+ * expansion replicate the original map creator (config.js / geodata.js / executor.js).
  */
+import regionsAsset from "@/assets/geo-regions.json.asset.json";
 
 export type GeoKind = "countries" | "regions";
 
@@ -12,6 +16,12 @@ export interface GeoFeature {
   keys: string[];
   /** owning country (regions only), lower-case */
   country?: string;
+  /** sovereign of the country (countries only), lower-case */
+  sovereign?: string;
+  /** Natural Earth TYPE, e.g. "Sovereign country", "Country", "Dependency" */
+  type?: string;
+  /** population estimate */
+  pop?: number;
   /** rings of Mercator-normalised coords [x0, y0, x1, y1, ...] in 0..1 */
   rings: Float32Array[];
   /** normalised bbox [minX, minY, maxX, maxY] */
@@ -25,34 +35,6 @@ const pending: Partial<Record<GeoKind, Promise<void>>> = {};
 
 export const geoReady = (k: GeoKind) => store[k] !== null;
 export const geoFeatures = (k: GeoKind) => store[k] ?? [];
-
-/** Country name aliases (lower-case) → Natural Earth name. */
-const ALIASES: Record<string, string> = {
-  usa: "united states of america", us: "united states of america", america: "united states of america", "united states": "united states of america",
-  uk: "united kingdom", britain: "united kingdom", england: "united kingdom", "great britain": "united kingdom",
-  uae: "united arab emirates", czech: "czechia", "czech republic": "czechia", "russian federation": "russia", holland: "netherlands",
-  gaza: "palestine", "west bank": "palestine", macedonia: "north macedonia", bosnia: "bosnia and herz.", "bosnia and herzegovina": "bosnia and herz.",
-  drc: "dem. rep. congo", "democratic republic of the congo": "dem. rep. congo", "south korea": "south korea", "north korea": "north korea",
-  ivorycoast: "côte d'ivoire", "ivory coast": "côte d'ivoire", burma: "myanmar", "central african republic": "central african rep.",
-  "dominican republic": "dominican rep.", "south sudan": "s. sudan", "western sahara": "w. sahara", "equatorial guinea": "eq. guinea",
-  "solomon islands": "solomon is.", "falkland islands": "falkland is.", "northern cyprus": "n. cyprus",
-};
-
-/** Region aliases (English → Natural Earth spelling), lower-case. */
-const REGION_ALIASES: Record<string, string[]> = {
-  crimea: ["crimea", "krym", "autonomous republic of crimea"],
-  donetsk: ["donets'k", "donetsk"], luhansk: ["luhans'k", "luhansk"], zaporizhzhia: ["zaporizhzhya", "zaporizhzhia"],
-  kharkiv: ["kharkiv"], kherson: ["kherson"], kyiv: ["kiev", "kyiv"],
-  bavaria: ["bayern", "bavaria"], hesse: ["hessen"], "lower saxony": ["niedersachsen"], saxony: ["sachsen"],
-  "north rhine westphalia": ["nordrhein-westfalen"], thuringia: ["thüringen"], "saxony anhalt": ["sachsen-anhalt"],
-  "republika srpska": ["repuplika srpska", "republika srpska", "srpska"],
-  lachin: ["laçın", "lachin"], kalbajar: ["kəlbəcər", "kalbajar"], agdam: ["ağdam", "agdam"], fuzuli: ["füzuli", "fuzuli"],
-  jabrayil: ["cəbrayıl", "jabrayil"], zangilan: ["zəngilan", "zangilan"], qubadli: ["qubadlı", "qubadli"], shusha: ["şuşa", "shusha"],
-  khojaly: ["xocalı", "khojaly"], khojavend: ["xocavənd", "khojavend"],
-};
-
-export const normName = (s: string) => s.toLowerCase().replace(/_/g, " ").trim();
-const fold = (s: string) => normName(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/['’`-]/g, " ").replace(/\s+/g, " ");
 
 /** Web Mercator: lng/lat → normalised 0..1 world coords. */
 export function toNorm(lng: number, lat: number): [number, number] {
@@ -93,12 +75,19 @@ function build(kind: GeoKind, json: any): GeoFeature[] {
     const p = f.properties ?? {};
     if (kind === "countries") {
       const name = String(p.NAME ?? p.ADMIN ?? "");
-      const keys = [...new Set([name, p.NAME_LONG, p.ADMIN].filter(Boolean).map((s: string) => fold(s)))];
-      out.push({ name, keys, rings, bbox: [minX, minY, maxX, maxY], center });
+      const keys = [...new Set([name, p.NAME_LONG, p.ADMIN, p.SOVEREIGNT].filter(Boolean).map((s: string) => fold(s)))];
+      const pop = Number(p.POP_EST);
+      out.push({
+        name, keys, rings, bbox: [minX, minY, maxX, maxY], center,
+        sovereign: p.SOVEREIGNT ? fold(String(p.SOVEREIGNT)) : undefined,
+        type: p.TYPE ? String(p.TYPE) : undefined,
+        pop: Number.isFinite(pop) ? pop : undefined,
+      });
     } else {
-      const name = String(p.name_en ?? p.name ?? "");
-      const keys = [...new Set([p.name, p.name_en].filter(Boolean).map((s: string) => fold(s)))];
-      out.push({ name, keys, country: fold(String(p.admin ?? "")), rings, bbox: [minX, minY, maxX, maxY], center });
+      const name = String(p.name_en ?? p.name ?? p.woe_name ?? "");
+      const keys = [...new Set([p.name, p.NAME, p.name_en, p.woe_name].filter(Boolean).map((s: string) => fold(s)))];
+      const admin = fold(String(p.admin ?? p.ADMIN ?? p.sovereignt ?? p.SOVEREIGNT ?? ""));
+      out.push({ name, keys, country: admin, rings, bbox: [minX, minY, maxX, maxY], center });
     }
   }
   // fixed visual centres for countries whose territory makes the average misleading
@@ -109,10 +98,25 @@ function build(kind: GeoKind, json: any): GeoFeature[] {
   return out;
 }
 
+/** Curated visual centres from the original map creator (geodata.js). */
 const FIXED_CENTERS: Record<string, [number, number]> = {
-  france: [2.5, 46.6], "united kingdom": [-2.5, 54.0], norway: [9.5, 61.5], russia: [55, 61], "united states of america": [-98.5, 39.5],
-  canada: [-100, 58], netherlands: [5.5, 52.2], denmark: [9.5, 56], portugal: [-8, 39.6], spain: [-3.5, 40], italy: [12.5, 42.8],
-  greece: [22, 39.5], indonesia: [118, -2], japan: [138, 36.5], chile: [-71, -33], "new zealand": [172, -41], croatia: [15.8, 45.4],
+  france: [2.5, 46.6], "united kingdom": [-2.5, 54.5], netherlands: [5.5, 52.2], denmark: [10, 56],
+  portugal: [-8, 39.6], spain: [-3.5, 40], norway: [10, 62], sweden: [17, 62], finland: [26, 64],
+  italy: [12.5, 42.5], greece: [22, 39.5], poland: [20, 52], ukraine: [32, 49], kosovo: [20.9, 42.6],
+  russia: [55, 61], "russian federation": [55, 61], china: [104, 35], india: [79, 23],
+  indonesia: [118, -2], philippines: [122, 13], japan: [136, 36], malaysia: [109, 3.5],
+  myanmar: [96, 18], thailand: [101, 15], vietnam: [106, 16.5], pakistan: [70, 30],
+  afghanistan: [66, 33], iran: [53, 32], iraq: [44, 33], "saudi arabia": [44, 24],
+  turkey: [35, 39], kazakhstan: [67, 48], mongolia: [103, 46.5], palestine: [35, 31.5],
+  "united states of america": [-98.5, 39.5], canada: [-96, 56], brazil: [-51, -10],
+  mexico: [-102, 24], argentina: [-65, -35], chile: [-71, -35], peru: [-75, -9],
+  colombia: [-74, 4], venezuela: [-66, 8], bolivia: [-65, -17],
+  egypt: [30, 27], libya: [17, 27], algeria: [3, 28], niger: [9, 16.5], chad: [18, 15],
+  mali: [-2, 17], mauritania: [-11, 20], sudan: [30, 15], "south sudan": [30, 7],
+  ethiopia: [40, 9], somalia: [46, 6], kenya: [37.5, 0.5], tanzania: [35, -6],
+  angola: [18, -12], mozambique: [35, -17], "south africa": [25, -29],
+  "democratic republic of the congo": [24, -2], congo: [15, -1],
+  australia: [134, -25], "new zealand": [172, -41],
 };
 
 /** Install already-fetched GeoJSON (used by tests and the loader). */
@@ -120,27 +124,98 @@ export function setGeoData(kind: GeoKind, json: unknown) {
   store[kind] = build(kind, json);
 }
 
-/** Fetch the outlines once (browser). */
+/** Fetch the outlines once (browser). Regions ship as a CDN asset (>10 MB). */
 export function loadGeo(kind: GeoKind): Promise<void> {
   if (store[kind]) return Promise.resolve();
-  pending[kind] ??= fetch(`/geo/${kind}.json`).then((r) => r.json()).then((j) => setGeoData(kind, j));
+  pending[kind] ??= fetch(kind === "regions" ? regionsAsset.url : `/geo/${kind}.json`)
+    .then((r) => r.json())
+    .then((j) => setGeoData(kind, j));
   return pending[kind]!;
 }
 
+export const normName = (s: string) => s.toLowerCase().replace(/[-_]/g, " ").replace(/^the\s+/, "").trim();
+const fold = (s: string) => normName(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/['’`]/g, " ").replace(/\s+/g, " ").trim();
+
+/** Country name aliases (lower-case) → Natural Earth name. */
+const ALIASES: Record<string, string> = {
+  usa: "united states of america", us: "united states of america", america: "united states of america", "united states": "united states of america",
+  uk: "united kingdom", britain: "united kingdom", england: "united kingdom", "great britain": "united kingdom",
+  uae: "united arab emirates", czech: "czechia", "czech republic": "czechia", russia: "russian federation",
+  holland: "netherlands", gaza: "palestine", "west bank": "palestine", "palestinian territories": "palestine",
+  macedonia: "north macedonia", bosnia: "bosnia and herz.", "bosnia and herzegovina": "bosnia and herz.",
+  drc: "dem. rep. congo", "democratic republic of the congo": "dem. rep. congo", "south korea": "south korea", "north korea": "north korea",
+  ivorycoast: "côte d'ivoire", "ivory coast": "côte d'ivoire", burma: "myanmar", "central african republic": "central african rep.",
+  "dominican republic": "dominican rep.", "south sudan": "s. sudan", "western sahara": "w. sahara", "equatorial guinea": "eq. guinea",
+  "solomon islands": "solomon is.", "falkland islands": "falkland is.", "northern cyprus": "n. cyprus",
+};
+
+/** Region aliases (English → Natural Earth spellings), lower-case. Matched bidirectionally. */
+const REGION_ALIASES: Record<string, string[]> = {
+  crimea: ["krym", "crimea", "respublika krym", "ar krym", "avtonomna respublika krym", "autonomous republic of crimea"],
+  donetsk: ["donets'ka", "donetska", "donetsk", "donetzka"],
+  luhansk: ["luhans'ka", "luhanska", "luhansk", "lugansk"],
+  zaporizhzhia: ["zaporiz'ka", "zaporizka", "zaporizhzhia", "zaporizhia", "zaporiz ka"],
+  kherson: ["khersons'ka", "khersonska", "kherson"],
+  kharkiv: ["kharkivs'ka", "kharkivska", "kharkiv"], kyiv: ["kiev", "kyiv"],
+  bavaria: ["bayern", "bavaria"], hesse: ["hessen", "hesse"], "lower saxony": ["niedersachsen", "lower saxony"],
+  "north rhine westphalia": ["nordrhein westfalen", "north rhine westphalia"],
+  "rhineland palatinate": ["rheinland pfalz", "rhineland palatinate"],
+  thuringia: ["thüringen", "thuringen", "thuringia"], saxony: ["sachsen", "saxony"],
+  "saxony anhalt": ["sachsen anhalt", "saxony anhalt"],
+  "republika srpska": ["republika srpska", "republic of srpska"],
+  lachin: ["lacin", "laçın", "lachin"], kalbajar: ["kalbacar", "kəlbəcər", "kalbajar"],
+  agdam: ["ağdam", "agdam"], fuzuli: ["füzuli", "fuzuli"],
+  jabrayil: ["cabrayil", "cəbrayıl", "jabrayil"], zangilan: ["zəngilan", "zangilan"],
+  qubadli: ["qubadli", "qubadlı"], nagornokarabakh: ["nagorno karabakh", "nagorno-karabakh", "artsakh"],
+  shusha: ["şuşa", "shusha", "shushi"], khojaly: ["xocalı", "khojaly", "xocali"],
+  khojavend: ["xocavənd", "khojavend", "martuni"], hadrut: ["hadrut"], askeran: ["əsgəran", "askeran"],
+  lankaran: ["lənkəran", "lankaran", "lenkeran"],
+};
+
 export function findCountry(name: string): GeoFeature | undefined {
-  const k = fold(ALIASES[normName(name)] ?? name);
+  const n = normName(name);
+  const search = fold(ALIASES[n] ?? name);
   const list = geoFeatures("countries");
-  return list.find((f) => f.keys.includes(k)) ?? list.find((f) => f.keys.some((x) => x.replace(/\./g, "") === k.replace(/\./g, "")));
+  const norm = (s: string) => fold(s);
+  return (
+    list.find((f) => norm(f.name) === search) ??
+    list.find((f) => f.keys.includes(search)) ??
+    list.find((f) => f.keys.some((x) => x.replace(/\./g, "") === search.replace(/\./g, ""))) ??
+    // bidirectional prefix fallback, as in the original
+    list.find((f) => f.keys.some((x) => x.startsWith(search) || search.startsWith(x)))
+  );
 }
 
 export function findRegion(name: string, country?: string): GeoFeature | undefined {
-  const c = country ? findCountry(country) : undefined;
-  const cKeys = c ? c.keys : country ? [fold(country)] : null;
-  const wanted = (REGION_ALIASES[normName(name)] ?? [name]).map(fold);
+  const n = normName(name);
+  const c = country ? normName(country) : undefined;
+  const ca = c ? (ALIASES[c] ? fold(ALIASES[c]) : fold(c)) : undefined;
+  // expand aliases bidirectionally: the typed name may match any variant, and vice versa
+  let wanted = [n];
+  const nFold = fold(n);
+  for (const [ascii, variants] of Object.entries(REGION_ALIASES)) {
+    const all = [...variants, ascii].map(fold);
+    if (all.some((v) => v === nFold || v.includes(nFold) || nFold.includes(v))) {
+      wanted = all;
+      break;
+    }
+  }
   const list = geoFeatures("regions");
+  const parentOf = (f: GeoFeature) => f.country ?? "";
+  const parentMatch = (f: GeoFeature) =>
+    !ca || ca === "" || parentOf(f) === ca || parentOf(f).includes(ca) || ca.includes(parentOf(f));
   const match = (f: GeoFeature) => f.keys.some((k) => wanted.includes(k));
-  // disputed areas may be filed under another country in the data, so fall back to a name-only match
-  return list.find((f) => (!cKeys || cKeys.includes(f.country ?? "")) && match(f)) ?? list.find(match);
+  const fuzzy = (f: GeoFeature) =>
+    f.keys.some((k) => {
+      if (wanted.includes(k)) return true;
+      return wanted.some((w) => Math.abs(k.length - w.length) <= 3 && (k.includes(w) || w.includes(k)));
+    });
+  return (
+    list.find((f) => parentMatch(f) && match(f)) ??
+    list.find((f) => parentMatch(f) && fuzzy(f)) ??
+    // no country given (or none matched): fall back to a name-only search
+    (ca ? undefined : list.find(match) ?? list.find(fuzzy))
+  );
 }
 
 /** Suggest close names for error messages. */
@@ -152,6 +227,19 @@ export function suggest(kind: GeoKind, name: string, country?: string): string[]
     .filter((f) => f.keys.some((x) => x.startsWith(k.slice(0, 3))))
     .slice(0, 4)
     .map((f) => f.name);
+}
+
+/** Nearby territories sharing the same sovereign (e.g. Isle of Man for the UK), as the original colours. */
+export function territoriesOf(feature: GeoFeature): GeoFeature[] {
+  if (!feature.sovereign) return [];
+  const [[mLng, mLat]] = [feature.center];
+  return geoFeatures("countries").filter((f) => {
+    if (f === feature) return false;
+    if (f.sovereign !== feature.sovereign) return false;
+    if (f.name === feature.sovereign || f.keys.includes(feature.sovereign)) return false;
+    const [fLng, fLat] = f.center;
+    return Math.sqrt((fLat - mLat) ** 2 + (fLng - mLng) ** 2) < 12;
+  });
 }
 
 function inRing(r: Float32Array, x: number, y: number) {
