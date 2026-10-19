@@ -313,7 +313,7 @@ export function interpret(src: string): Timeline {
       }
       case "voice": {
         const a = src(0);
-        if (!a || a.kind !== "asset") err("Expected an @audio name after voice", a ?? near.tok ? { tok: s.nameTok } : near);
+        if (!a || a.kind !== "asset") err("Expected an @audio name after voice", a ?? near);
         tl.voice = (a as { name: string }).name;
         return;
       }
