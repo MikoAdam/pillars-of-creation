@@ -137,7 +137,10 @@ export function findRegion(name: string, country?: string): GeoFeature | undefin
   const c = country ? findCountry(country) : undefined;
   const cKeys = c ? c.keys : country ? [fold(country)] : null;
   const wanted = (REGION_ALIASES[normName(name)] ?? [name]).map(fold);
-  return geoFeatures("regions").find((f) => (!cKeys || cKeys.includes(f.country ?? "")) && f.keys.some((k) => wanted.includes(k)));
+  const list = geoFeatures("regions");
+  const match = (f: GeoFeature) => f.keys.some((k) => wanted.includes(k));
+  // disputed areas may be filed under another country in the data, so fall back to a name-only match
+  return list.find((f) => (!cKeys || cKeys.includes(f.country ?? "")) && match(f)) ?? list.find(match);
 }
 
 /** Suggest close names for error messages. */
