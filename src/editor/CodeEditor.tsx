@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { COMMANDS, STYLE_KEYS, THEME_NAMES } from "@/lang/interpreter";
 import { EASE_NAMES, FX_STYLES } from "@/lang/timeline";
-import { MAP_COLOR_NAMES } from "@/render/geo";
+import { MAP_COLOR_NAMES, geoFeatures } from "@/render/geo";
 import { SYMBOLS } from "@/render/symbols";
 
 const KEYWORDS = ["over", "as", "at", "to", "from", "unit", "prefix", "suffix", "label", "beat", "radius", "size", "scale", "delay", "body", "paper", "mark", "theme", "photo", "step", "vignette", "off", "in", "out", "background", "text", "accent", "display", "radius", "grain", "caps", "on", "enter", "exit", "rotate", "ease", "curve", "opacity", "zoom", "tilt", "turn", "labels", "bend", "width", "head", "occupied", "highlight", "hide", "auto", "left", "right", "pulse", "fade", "radial", "sweep", "none", "arrows", "pins", "colors", "legend", "year", "all", "last", ...MAP_COLOR_NAMES, ...SYMBOLS, ...EASE_NAMES, ...FX_STYLES];
@@ -82,6 +82,8 @@ export function CodeEditor(p: Props) {
     else if (words[words.length - 1] === "ease") pool = EASE_NAMES;
     else if (words.length === 1 && words[0] === "style") pool = [...STYLE_KEYS];
     else if (words.length === 1 && OBJ_CMDS.has(words[0])) pool = p.objectIds;
+    else if (["country", "fly", "map", "attack", "route", "region"].includes(words[0]) && words.length <= 2 && geoFeatures("countries").length)
+      pool = [...geoFeatures("countries").map((f) => f.name.toLowerCase()).filter((n) => /^[a-z]+$/.test(n)), ...MAP_COLOR_NAMES];
     else pool = KEYWORDS;
     if (!prefix) return setAc(null);
     const items = pool.filter((x) => x.startsWith(prefix) && x !== prefix).slice(0, 8);
