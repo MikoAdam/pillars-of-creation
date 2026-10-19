@@ -18,6 +18,7 @@ export const COMMANDS = [
   "cut", "crossfade", "slide", "count", "bars", "line", "headline", "say", "arrow", "circle", "box",
   "highlight", "voice", "subtitle", "rotate", "camera", "shake", "pulse", "wiggle", "wipe", "push", "whip", "blur",
   "map", "fly", "country", "region", "attack", "route", "pin", "bubble", "label", "tag", "year", "legend", "remove",
+  "cinematic", "effect", "clear", "clearregions", "rename", "unrename",
   "let", "repeat", "for", "end",
 ];
 
@@ -56,7 +57,7 @@ const KW: Record<string, Record<string, number>> = {
 };
 
 export const MAP_ANIMS = ["pulse", "fade", "radial", "sweep", "none"] as const;
-export const REMOVE_WHAT = ["last", "arrows", "pins", "labels", "colors", "legend", "year", "all"] as const;
+export const REMOVE_WHAT = ["last", "arrows", "pins", "labels", "colors", "effects", "lines", "legend", "year", "all"] as const;
 
 interface Parsed {
   pos: Arg[];
