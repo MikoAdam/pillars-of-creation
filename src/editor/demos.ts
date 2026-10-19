@@ -122,4 +122,60 @@ wiggle title over 0.4s delay 2.8s
 wait 3.5s
 `,
   },
+  {
+    id: "yugoslav",
+    name: "Map: The Yugoslav Wars",
+    code: `project "The Yugoslav Wars, 1991-1999" theme clean_modern
+# Map briefing: coloured countries, attack arrows, symbols, camera flights.
+# Click a line to select it on the map, or drag pins, labels and arrow handles.
+
+map 44 18 zoom 5.2 as balkans
+year "1991"
+wait 1s
+
+country slovenia green pulse
+pin 46.05 14.5 flag green
+legend "Slovenia" green
+wait 1.2s
+
+country serbia red pulse
+pin 44.8 20.46 troops red
+legend "Serbia" red
+wait 1.2s
+
+country croatia blue sweep
+attack serbia croatia red bend 0.2 width 1.4
+pin 45.35 19.0 battle red delay 1s
+legend "Croatia" blue
+wait 2.8s
+
+year "1992"
+country bosnia purple radial
+attack serbia bosnia red bend -0.15 delay 0.6s
+legend "Bosnia and Herzegovina" purple
+wait 2.4s
+
+fly 44.1 19.2 zoom 6.6 tilt 35 over 2s
+year "1995" highlight
+wait 2s
+pin 44.1 19.3 skull red size 1.3
+bubble 44.35 19.3 "Srebrenica, July 1995: about 8,000 Bosniak men and boys killed" red delay 0.4s
+wait 3.5s
+
+remove labels
+pin 43.86 18.41 bombing blue size 1.2
+tag 43.86 18.75 "NATO air campaign" left blue
+wait 2.5s
+
+remove arrows
+fly 43.4 20.4 zoom 6.2 tilt 0 over 2s
+year "1999" highlight
+wait 1.6s
+country kosovo orange pulse
+pin 42.66 21.16 capital orange
+label 42.25 20.9 "Kosovo" size 20
+legend "Kosovo" orange
+wait 3.5s
+`,
+  },
 ];

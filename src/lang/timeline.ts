@@ -1,6 +1,12 @@
 import type { Span } from "./parser";
+import { makeProjection, type MapCam } from "@/render/geo";
+import { attackCurve } from "@/render/scenes/map";
 
-export type ObjKind = "photo" | "count" | "bars" | "line" | "headline" | "say" | "arrow" | "circle" | "box" | "highlight";
+export type ObjKind = "photo" | "count" | "bars" | "line" | "headline" | "say" | "arrow" | "circle" | "box" | "highlight"
+  | "map" | "pin" | "bubble" | "label" | "tag" | "attack" | "route" | "year" | "legend";
+
+/** Map camera tracks stored on a map object: pos = [lat, lng]. */
+export interface MapCamTracks { pos: Track; zoom: Track; tilt: Track; turn: Track }
 
 /** Easing names usable with `ease <name>` in the script. */
 export const EASES: Record<string, (p: number) => number> = {
@@ -109,6 +115,8 @@ export interface Camera {
 
 export interface Timeline {
   title: string;
+  /** outline data this script needs that has not loaded yet */
+  needsGeo?: ("countries" | "regions")[];
   themeId: string;
   themeSpan?: Span | undefined;
   /** `style` overrides on top of the theme defaults */
@@ -180,7 +188,45 @@ export function toCanvas(tl: Timeline, t: number, x: number, y: number) {
 }
 
 /** World-space bounding box of an object at time t. */
+export function mapCamAt(map: TObj, t: number): MapCam {
+  const c = map.data.cam as MapCamTracks;
+  const [lat, lng] = sample(c.pos, t);
+  return { lat, lng, zoom: sample(c.zoom, t)[0], tilt: sample(c.tilt, t)[0], turn: sample(c.turn, t)[0] };
+}
+
+/** Screen points of a map element's endpoints (attack / route) at time t. */
+export function geoEnds(o: TObj, t: number) {
+  const pr = makeProjection(mapCamAt(o.data.map, t));
+  return { a: pr.point(o.data.a[0], o.data.a[1]), b: pr.point(o.data.b[0], o.data.b[1]), pr };
+}
+
+/** Where an object sits on screen (scene coords): its pivot for moving, scaling and rotating. */
+export function anchorAt(o: TObj, t: number): [number, number] {
+  if (o.data?.geo) {
+    if (o.kind === "attack" || o.kind === "route") {
+      const { a, b } = geoEnds(o, t);
+      const { pts } = attackCurve(a, b, o.kind === "route" ? 0.12 : o.data.bend);
+      return pts[Math.floor(pts.length / 2)];
+    }
+    return makeProjection(mapCamAt(o.data.map, t)).point(o.data.lng, o.data.lat);
+  }
+  return sample(o.pos, t) as [number, number];
+}
+
 export function worldBox(o: TObj, t: number): [number, number, number, number] {
+  if (o.data?.geo) {
+    const s = sample(o.scale, t)[0];
+    if (o.kind === "attack" || o.kind === "route") {
+      const { a, b } = geoEnds(o, t);
+      const { pts } = attackCurve(a, b, o.kind === "route" ? 0.12 : o.data.bend, 12);
+      const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+      const pad = 24;
+      return [Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) - Math.min(...xs) + 2 * pad, Math.max(...ys) - Math.min(...ys) + 2 * pad];
+    }
+    const [ax, ay] = anchorAt(o, t);
+    const [x, y, w, h] = o.data.rel as number[];
+    return [ax + x * s, ay + y * s, w * s, h * s];
+  }
   const [px, py] = sample(o.pos, t);
   const s = o.kind === "photo" ? 1 : sample(o.scale, t)[0];
   const [x, y, w, h] = o.box;

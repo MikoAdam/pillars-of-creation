@@ -1,5 +1,6 @@
 import type { Span } from "./parser";
-import { sample, type TObj, type Timeline } from "./timeline";
+import { anchorAt, geoEnds, mapCamAt, sample, type TObj, type Timeline } from "./timeline";
+import { makeProjection } from "@/render/geo";
 
 export interface Edit { span: Span; text: string }
 
@@ -176,4 +177,81 @@ export function writeStart(code: string, info: { base: number; delaySpan?: Span 
   if (info.hasDelay) return code; // delay is an expression: leave it alone
   if (d < 0.05) return code;
   return code.slice(0, info.lineEnd) + ` delay ${fmtDur(d)}` + code.slice(info.lineEnd);
+}
+
+// ---------- maps ----------
+
+const r2s = (v: number) => String(Math.round(v * 100) / 100);
+
+/** Drag a map pin / bubble / label / tag: rewrite its lat lng literals. */
+export function writeGeoMove(code: string, tl: Timeline, o: TObj, T: number, nx: number, ny: number): string {
+  if (o.kind === "map") return writeMapPan(code, tl, o, T, nx - 960, ny - 540);
+  const pr = makeProjection(mapCamAt(o.data.map, T));
+  if (o.kind === "attack" || o.kind === "route") {
+    const [ax, ay] = anchorAt(o, T);
+    const dx = nx - ax, dy = ny - ay;
+    const { a, b } = geoEnds(o, T);
+    const ea = pr.unproject(a[0] + dx, a[1] + dy), eb = pr.unproject(b[0] + dx, b[1] + dy);
+    return endEdits(code, o, [["a", ea], ["b", eb]]);
+  }
+  const at = o.createSpans.at;
+  if (!at?.[0] || !at?.[1]) return code;
+  const [lng, lat] = pr.unproject(nx, ny);
+  return applyEdits(code, [{ span: at[0], text: r2s(lat) }, { span: at[1], text: r2s(lng) }]);
+}
+
+function endEdits(code: string, o: TObj, ends: ["a" | "b", [number, number]][]) {
+  const edits: Edit[] = [];
+  for (const [k, [lng, lat]] of ends) {
+    const e = o.data.ends[k];
+    if (e.spans[0] && e.spans[1]) edits.push({ span: e.spans[0], text: r2s(lat) }, { span: e.spans[1], text: r2s(lng) });
+    else if (e.nameSpan) edits.push({ span: e.nameSpan, text: `${r2s(lat)} ${r2s(lng)}` });
+  }
+  return applyEdits(code, edits);
+}
+
+/** Drag an attack's start / end handle to a screen point. */
+export function writeGeoEnd(code: string, o: TObj, T: number, which: "a" | "b", x: number, y: number): string {
+  const pr = makeProjection(mapCamAt(o.data.map, T));
+  return endEdits(code, o, [[which, pr.unproject(x, y)]]);
+}
+
+/** Drag an attack's curve handle: bend = sideways offset / length. */
+export function writeBend(code: string, o: TObj, T: number, x: number, y: number): string {
+  const { a, b } = geoEnds(o, T);
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy || 1;
+  // control point of a quadratic is twice as far out as the curve's midpoint
+  const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+  const off = ((x - mx) * -dy + (y - my) * dx) / len2;
+  const v = r2s(Math.max(-1, Math.min(1, off * 2)));
+  if (o.data.bendSpan) return applyEdits(code, [{ span: o.data.bendSpan, text: v }]);
+  return appendToCreate(code, o, ` bend ${v}`);
+}
+
+type CamKey = "pos" | "zoom" | "tilt" | "turn";
+
+/** Map camera from the canvas: edit the latest fly literal at T, else the map line, else add a fly. */
+export function writeMapCam(code: string, tl: Timeline, m: TObj, T: number, key: CamKey, vals: number[]): string {
+  const fmt = key === "pos" || key === "zoom" ? r2s : r0;
+  const txt = vals.map(fmt);
+  const segs = (m.data.cam[key].segs as { t0: number; toSpans: (Span | undefined)[] }[]).filter((s) => s.t0 <= T + 1e-6);
+  const last = segs[segs.length - 1];
+  const kw = key === "pos" ? "" : ` ${key}`;
+  if (last) {
+    if (last.toSpans.length === vals.length && last.toSpans.every(Boolean)) return applyEdits(code, last.toSpans.map((sp, i) => ({ span: sp!, text: txt[i] })));
+    return insertAtTime(code, tl, T, `fly${kw} ${txt.join(" ")} over 1s`).code;
+  }
+  const cs = m.data.camSpans;
+  const spans: (Span | undefined)[] = key === "pos" ? cs.pos : [cs[key]];
+  if (spans.length === vals.length && spans.every(Boolean)) return applyEdits(code, spans.map((sp, i) => ({ span: sp!, text: txt[i] })));
+  if (key === "pos") return insertAtTime(code, tl, T, `fly ${txt.join(" ")} over 1s`).code;
+  return appendToCreate(code, m, `${kw} ${txt[0]}`);
+}
+
+/** Drag the map itself: pan so the grabbed point follows the pointer. */
+export function writeMapPan(code: string, tl: Timeline, m: TObj, T: number, dx: number, dy: number): string {
+  const pr = makeProjection(mapCamAt(m, T));
+  const [lng, lat] = pr.unproject(960 - dx, 540 - dy);
+  return writeMapCam(code, tl, m, T, "pos", [lat, lng]);
 }

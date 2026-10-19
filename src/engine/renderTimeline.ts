@@ -9,7 +9,8 @@ import { renderHeadline } from "@/render/scenes/headlineHighlight";
 import { renderKineticText } from "@/render/scenes/kineticText";
 import { alpha, bodyFont, fillRound } from "@/render/theme";
 import { wrapText } from "@/render/text";
-import { alive, cameraAt, EASES, sample, type Fx, type TObj, type Timeline, type Trans } from "@/lang/timeline";
+import { renderMap, drawAttack, drawRoute, drawPin, drawBubble, drawPlace, drawTag, drawYear, drawLegend, type MapFill } from "@/render/scenes/map";
+import { anchorAt, geoEnds, mapCamAt, alive, cameraAt, EASES, sample, type Fx, type TObj, type Timeline, type Trans } from "@/lang/timeline";
 
 export interface Override {
   id: string;
@@ -112,6 +113,8 @@ function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets
   let op = ov?.opacity ?? sample(o.opacity, t)[0];
   let rot = sample(o.rot, t)[0] + (ov?.drot ?? 0);
   const p = sample(o.progress, t, true)[0];
+  let org = o.origin;
+  if (o.data?.geo) { [px, py] = anchorAt(o, t); org = [px, py]; }
   if (ov) { px += ov.dx; py += ov.dy; s *= ov.scaleMul; }
 
   ctx.save();
@@ -156,14 +159,14 @@ function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets
     else st.rot += pl.amt * Math.sin(q * Math.PI * 6) * (1 - q);
   }
   ctx.translate(px + st.dx, py + st.dy);
-  const ts = o.kind === "photo" ? 1 : s;
+  const ts = o.kind === "photo" || o.kind === "map" ? 1 : s;
   const fxState = { op: 1, s: 1, rot: 0, dx: 0, dy: 0, blur: 0 };
   if (fxIn && local < fxIn.d) applyFxPre(fxIn, clamp01(local / fxIn.d), fxState);
   if (fxOut && t > o.end - fxOut.d && o.end !== Infinity) applyFxPre(fxOut, clamp01((o.end - t) / fxOut.d), fxState);
   ctx.translate(fxState.dx, fxState.dy);
   ctx.rotate(((rot + st.rot + fxState.rot) * Math.PI) / 180);
   ctx.scale(ts * st.s * fxState.s, ts * st.s * fxState.s);
-  ctx.translate(-o.origin[0], -o.origin[1]);
+  ctx.translate(-org[0], -org[1]);
   if (fxIn && local < fxIn.d && fxIn.style === "wipe") applyFx(ctx, fxIn, clamp01(local / fxIn.d), o.box, fxState);
   if (fxOut && fxOut.style === "wipe" && t > o.end - fxOut.d) applyFx(ctx, fxOut, clamp01((o.end - t) / fxOut.d), o.box, fxState);
   blur += fxState.blur;
@@ -213,6 +216,15 @@ function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets
     case "highlight": drawMarker(ctx, d.a, d.b, p, theme); break;
     case "circle": drawCircle(ctx, o.origin, d.r, p, theme); break;
     case "box": drawBox(ctx, o.origin, d.w, d.h, p, theme); break;
+    case "map": renderMap(ctx, theme, mapCamAt(o, t), d.fills, d.labels, t); break;
+    case "attack": { const e = geoEnds(o, t); drawAttack(ctx, e.a, e.b, d.bend, d.width, d.head, d.color, p); break; }
+    case "route": { const e = geoEnds(o, t); drawRoute(ctx, e.a, e.b, d.color, p); break; }
+    case "pin": ctx.translate(org[0], org[1]); drawPin(ctx, d.symbol, d.color, d.size, local); break;
+    case "bubble": ctx.translate(org[0], org[1]); drawBubble(ctx, theme, d.text, d.color, local); break;
+    case "label": ctx.translate(org[0], org[1]); drawPlace(ctx, theme, d.text, d.size, d.color, local); break;
+    case "tag": ctx.translate(org[0], org[1]); drawTag(ctx, theme, d.text, d.dir, d.color, local); break;
+    case "year": ctx.translate(o.origin[0], o.origin[1]); drawYear(ctx, theme, d.text, d.highlight, local); break;
+    case "legend": ctx.translate(o.origin[0], o.origin[1]); drawLegend(ctx, theme, legendEntries(d, t), t); break;
   }
   ctx.restore();
 }
@@ -292,4 +304,20 @@ function drawBox(ctx: CanvasRenderingContext2D, c: number[], w: number, h: numbe
     remain -= len;
   }
   ctx.stroke();
+}
+
+/** Legend rows: manual entries, plus one row per colour on the map when "legend auto" is on. */
+function legendEntries(d: any, t: number) {
+  const rows: { label: string; color: string; t0: number }[] = [...d.entries];
+  if (d.auto && d.map) {
+    const by = new Map<string, { names: string[]; t0: number }>();
+    for (const f of d.map.data.fills as MapFill[]) {
+      if (!f.feature || t < f.t0 || t >= f.end || rows.some((r) => r.color === f.color)) continue;
+      const g = by.get(f.color) ?? { names: [], t0: f.t0 };
+      if (!g.names.includes(f.feature.name)) g.names.push(f.feature.name);
+      by.set(f.color, g);
+    }
+    for (const [color, g] of by) rows.push({ color, t0: Math.max(g.t0, d.autoFrom ?? 0), label: g.names.length > 3 ? `${g.names.slice(0, 3).join(", ")} +${g.names.length - 3}` : g.names.join(", ") });
+  }
+  return rows;
 }

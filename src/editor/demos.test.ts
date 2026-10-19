@@ -1,4 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { setGeoData } from "@/render/geo";
+
+beforeAll(() => {
+  setGeoData("countries", JSON.parse(readFileSync("public/geo/countries.json", "utf8")));
+  setGeoData("regions", JSON.parse(readFileSync("public/geo/regions.json", "utf8")));
+});
 import { DEMOS } from "./demos";
 import { run } from "@/lang/interpreter";
 
@@ -15,7 +22,7 @@ import { applyStyle, getTheme, THEMES } from "@/render/theme";
 
 describe("looks", () => {
   it("there is exactly one look", () => expect(THEMES.length).toBe(1));
-  it("there are exactly four demos", () => expect(DEMOS.length).toBe(4));
+  it("there are exactly five demos", () => expect(DEMOS.length).toBe(5));
   it("style lines override the look and reset removes them", () => {
     const base = 'project "X" theme clean_modern\nsay "hi"\n';
     const tl1 = (run(base) as any).timeline;
