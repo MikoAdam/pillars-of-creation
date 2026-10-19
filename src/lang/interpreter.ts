@@ -767,6 +767,53 @@ export function interpret(src: string): Timeline {
       }
       case "attack":
       case "route": {
+        if (s.legacy) {
+          // attack: E1, E2, COLOR[, CURVE, WIDTH, HEAD, DUR] — or the named form:
+          // attack: from LAT LNG, to LAT LNG, color C, curve N, width N, head N, dur MS
+          let ai = 0;
+          let aLL: [number, number], bLL: [number, number];
+          let aSpans: (Span | undefined)[] = [], bSpans: (Span | undefined)[] = [];
+          let aName: Span | undefined, bName: Span | undefined;
+          if (A[0]?.kind === "word" && A[0].name === "from") {
+            const la = num(A[1], "latitude", A[0]), ln = num(A[2], "longitude", A[1] ?? A[0]);
+            aLL = [ln.v, la.v]; aSpans = [la.span, ln.span]; ai = 3;
+          } else {
+            const pl = place(A, 0, s); aLL = pl.ll; aSpans = pl.spans; aName = pl.nameSpan; ai = pl.used;
+          }
+          if (A[ai]?.kind === "word" && A[ai].name === "to") {
+            const la = num(A[ai + 1], "latitude", A[ai]), ln = num(A[ai + 2], "longitude", A[ai + 1] ?? A[ai]);
+            bLL = [ln.v, la.v]; bSpans = [la.span, ln.span]; ai += 3;
+          } else {
+            const pl = place(A, ai, s); bLL = pl.ll; bSpans = pl.spans; bName = pl.nameSpan; ai += pl.used;
+          }
+          let curve = kw1(p, "curve") ? num(kw1(p, "curve")![1], "curve", kw1(p, "curve")![0]).v : 0.15;
+          let width = 1, head = NaN, dur = 0.8, slot = 0;
+          let col = MAP_COLORS["red"];
+          const FIELD = ["curve", "width", "head", "dur", "anim"];
+          if (A[ai] && (A[ai].kind === "word" || A[ai].kind === "str") && !(A[ai].kind === "word" && FIELD.includes(A[ai].name))) { col = color(A[ai], s); ai++; }
+          while (ai < A.length) {
+            const a2 = A[ai];
+            if (a2.kind === "word" && FIELD.includes(a2.name)) {
+              if (a2.name === "curve") { curve = num(A[ai + 1], "curve", a2).v; slot = 1; }
+              else if (a2.name === "width") { width = num(A[ai + 1], "width", a2).v; slot = 2; }
+              else if (a2.name === "head") { head = num(A[ai + 1], "head", a2).v; }
+              else if (a2.name === "dur") { dur = num(A[ai + 1], "duration", a2).v; }
+              ai += 2;
+            } else if (a2.kind === "num" || a2.kind === "expr") {
+              const v = num(a2, "a number", near).v;
+              if (slot === 0) { curve = v; slot = 1; }
+              else if (slot === 1) { width = v; slot = 2; }
+              else if (slot === 2) { head = v; slot = 3; }
+              else { dur = v; }
+              ai++;
+            } else ai++; // stray animation word etc.
+          }
+          head = Number.isNaN(head) ? width : head;
+          p.kw["over"] = [[{ kind: "word", name: "over", tok: s.nameTok }, { kind: "num", v: Math.max(0.05, dur), isDur: true, tok: s.nameTok }]];
+          const o = geoObj("attack", p, s, start, { a: aLL, b: bLL, color: col, bend: curve, width, head });
+          o.data.ends = { a: { spans: aSpans, nameSpan: aName }, b: { spans: bSpans, nameSpan: bName } };
+          return true;
+        }
         const a = place(A, 0, s);
         const b = place(A, a.used, s);
         const col = color(A[a.used + b.used], s, s.name === "route" ? MAP_COLORS["blue"] : MAP_COLORS["red"]);
