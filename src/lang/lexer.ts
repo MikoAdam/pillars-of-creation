@@ -1,4 +1,4 @@
-export type TokKind = "ident" | "num" | "str" | "asset" | "url" | "op" | "lparen" | "rparen" | "eq";
+export type TokKind = "ident" | "num" | "str" | "asset" | "url" | "op" | "lparen" | "rparen" | "eq" | "colon" | "comma" | "color";
 
 export interface Tok {
   kind: TokKind;
