@@ -760,15 +760,9 @@ export function interpret(src: string): Timeline {
           else err(`Unknown option "${w}". Use ${MAP_ANIMS.join(", ")} or occupied`, a);
         }
         const overG = kw1(p, "over");
-        const d = overG ? num(overG[1], "duration", overG[0]).v : anim === "none" ? 0.01 : anim === "pulse" ? 0.9 : 0.8;
-        const fills = m.data.fills as (MapFill & { line: number; key: string })[];
-        const key = f?.name ?? "";
-        for (const old of fills) if (old.key === key && old.end === Infinity && f) old.end = start + d;
-        const fill = { feature: f, color: col, anim, t0: start, d, end: Infinity, occupied, line: s.line, key };
-        fills.push(fill);
-        mapElems.push(fill);
-        m.lines.push(s.line);
-        bump(start + d);
+        const d = overG ? num(overG[1], "duration", overG[0]).v : FILL_DUR[anim];
+        // fills stack: a later colour simply draws over the earlier one
+        applyFill(m, f, col, anim, d, occupied, s.name === "region", start, s.line);
         return true;
       }
       case "attack":
