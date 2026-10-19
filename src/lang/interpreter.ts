@@ -88,6 +88,7 @@ export function interpret(src: string): Timeline {
   const bump = (t: number) => { if (t > maxT) maxT = t; };
   let curMap: TObj | undefined, legendObj: TObj | undefined, yearObj: TObj | undefined;
   const mapElems: (TObj | (MapFill & { line: number }))[] = [];
+  const markerStack: TObj[] = []; // pins / bubbles / labels / tags / effects, in script order
   const needGeo = new Set<"countries" | "regions">();
 
   const err = (msg: string, a: { tok: { line: number; col: number; text: string } }) => {
