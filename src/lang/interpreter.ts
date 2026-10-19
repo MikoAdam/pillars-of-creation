@@ -627,6 +627,7 @@ export function interpret(src: string): Timeline {
     const m = needMap(s);
     const o = makeObj(kind, p, s, start, [0, 0], [0, 0, 0, 0], { geo: true, map: m, ...data });
     mapElems.push(o);
+    if (kind === "pin" || kind === "bubble" || kind === "label" || kind === "tag" || kind === "effect") markerStack.push(o);
     return o;
   }
 
