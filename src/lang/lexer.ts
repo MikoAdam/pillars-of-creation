@@ -52,7 +52,17 @@ export function lex(src: string): LexLine[] {
         i++;
         continue;
       }
-      if (c === "#") break;
+      if (c === "#") {
+        // legacy hex colour like #003fa3 — otherwise a comment
+        const hexM = /^([0-9a-fA-F]{6}|[0-9a-fA-F]{3})(?![0-9a-zA-Z_])/.exec(raw.slice(i + 1));
+        if (hexM) {
+          const text = raw.slice(i, i + 1 + hexM[0].length);
+          i += text.length;
+          push("color", text, text);
+          continue;
+        }
+        break;
+      }
       const startCol = i;
       const push = (kind: TokKind, text: string, value: number | string, extra: Partial<Tok> = {}) => {
         tokens.push({ kind, text, value, start: lineStart + startCol, end: lineStart + i, line, col: startCol, ...extra });
