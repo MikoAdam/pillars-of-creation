@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type PointerEvent as RPE, type DragEvent } from "react";
 import { renderTimeline, type Override } from "@/engine/renderTimeline";
-import { alive, sample, toCanvas, toScene, worldBox, type TObj, type Timeline } from "@/lang/timeline";
+import { alive, anchorAt, geoEnds, mapCamAt, sample, toCanvas, toScene, worldBox, type TObj, type Timeline } from "@/lang/timeline";
+import { attackCurve } from "@/render/scenes/map";
+import { makeProjection } from "@/render/geo";
 import { HEIGHT, WIDTH, type Assets, type Theme } from "@/render/types";
 
-export type Tool = "select" | "text" | "arrow" | "circle" | "box" | "highlight" | "camera";
+export type Tool = "select" | "text" | "arrow" | "circle" | "box" | "highlight" | "camera" | "map";
 
 export interface FxDrop { kind: "enter" | "exit" | "pulse" | "wiggle"; style?: string }
 
@@ -25,6 +27,12 @@ interface Props {
   onDropAsset: (name: string) => void;
   onFx: (o: TObj, fx: FxDrop) => void;
   onNotice: (msg: string) => void;
+  /** map tool: click a country (shift = region) */
+  onMapClick: (lng: number, lat: number, region: boolean) => void;
+  /** map tool: drag from one place to another = attack arrow */
+  onMapDrag: (a: [number, number], b: [number, number]) => void;
+  /** attack handles: start, end or bend */
+  onGeoHandle: (o: TObj, which: "a" | "b" | "bend", x: number, y: number) => void;
 }
 
 const r10 = (v: number) => Math.round(v / 10) * 10;
@@ -34,7 +42,8 @@ type Drag =
   | { kind: "move"; o: TObj; sx: number; sy: number; dx: number; dy: number }
   | { kind: "scale"; o: TObj; cx: number; cy: number; d0: number; mul: number }
   | { kind: "rotate"; o: TObj; cx: number; cy: number; a0: number; drot: number }
-  | { kind: "pen"; x1: number; y1: number; x2: number; y2: number };
+  | { kind: "pen"; x1: number; y1: number; x2: number; y2: number; shift?: boolean }
+  | { kind: "geo"; o: TObj; which: "a" | "b" | "bend"; x: number; y: number };
 
 export function Stage(p: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -66,6 +75,14 @@ export function Stage(p: Props) {
   };
 
   const selected = tl.objects.find((o) => o.id === p.selectedId && alive(o, p.t));
+  const mapObj = [...tl.objects].reverse().find((o) => o.kind === "map" && alive(o, p.t));
+  const proj = mapObj ? makeProjection(mapCamAt(mapObj, p.t)) : null;
+  /** attack handles in scene coords */
+  const handles = selected?.kind === "attack" ? (() => {
+    const { a, b } = geoEnds(selected, p.t);
+    const { pts } = attackCurve(a, b, selected.data.bend);
+    return { a, b, bend: pts[Math.floor(pts.length / 2)] } as Record<"a" | "b" | "bend", [number, number]>;
+  })() : null;
 
   const hit = (x: number, y: number) => {
     for (let i = tl.objects.length - 1; i >= 0; i--) {
@@ -90,10 +107,20 @@ export function Stage(p: Props) {
     e.currentTarget.setPointerCapture(e.pointerId);
     if (p.tool === "text") { setTextAt({ x: m.sx, y: m.sy }); setTextVal(""); return; }
     if (p.tool === "camera") { setDrag({ kind: "pen", x1: m.x, y1: m.y, x2: m.x, y2: m.y }); return; }
+    if (p.tool === "map") {
+      if (!proj) { p.onNotice("Start a map first: drag the Map chip onto the video, or type map 48 15 zoom 4"); return; }
+      setDrag({ kind: "pen", x1: m.sx, y1: m.sy, x2: m.sx, y2: m.sy, shift: e.shiftKey });
+      return;
+    }
     if (p.tool !== "select") { setDrag({ kind: "pen", x1: m.sx, y1: m.sy, x2: m.sx, y2: m.sy }); return; }
+    if (handles && selected) {
+      for (const w of ["a", "b", "bend"] as const) {
+        if (Math.hypot(handles[w][0] - m.sx, handles[w][1] - m.sy) * m.z < 16 * m.k) { setDrag({ kind: "geo", o: selected, which: w, x: m.sx, y: m.sy }); return; }
+      }
+    }
     if (selected) {
       const [bx, by, bw, bh] = canvasBox(selected);
-      const c = toCanvas(tl, p.t, ...(sample(selected.pos, p.t) as [number, number]));
+      const c = toCanvas(tl, p.t, ...anchorAt(selected, p.t));
       // rotate knob above the top edge
       if (Math.hypot(bx + bw / 2 - m.x, by - 36 * m.k - m.y) < 14 * m.k) {
         setDrag({ kind: "rotate", o: selected, cx: c.x, cy: c.y, a0: Math.atan2(m.y - c.y, m.x - c.x), drot: 0 });
@@ -114,6 +141,7 @@ export function Stage(p: Props) {
     if (!drag) return;
     const m = at(e);
     if (drag.kind === "move") setDrag({ ...drag, dx: m.sx - drag.sx, dy: m.sy - drag.sy });
+    else if (drag.kind === "geo") setDrag({ ...drag, x: m.sx, y: m.sy });
     else if (drag.kind === "scale") setDrag({ ...drag, mul: Math.max(0.05, Math.hypot(m.x - drag.cx, m.y - drag.cy) / drag.d0) });
     else if (drag.kind === "rotate") {
       let d = ((Math.atan2(m.y - drag.cy, m.x - drag.cx) - drag.a0) * 180) / Math.PI;
@@ -127,9 +155,10 @@ export function Stage(p: Props) {
     const d = drag;
     setDrag(null);
     if (!d) return;
+    if (d.kind === "geo") { p.onGeoHandle(d.o, d.which, d.x, d.y); return; }
     if (d.kind === "move") {
       if (Math.hypot(d.dx, d.dy) < 3) return;
-      const [px, py] = sample(d.o.pos, p.t);
+      const [px, py] = anchorAt(d.o, p.t);
       p.onMove(d.o, px + d.dx, py + d.dy);
     } else if (d.kind === "scale") {
       if (Math.abs(d.mul - 1) < 0.01) return;
@@ -137,6 +166,19 @@ export function Stage(p: Props) {
     } else if (d.kind === "rotate") {
       if (Math.abs(d.drot) < 1) return;
       p.onRotate(d.o, Math.round(sample(d.o.rot, p.t)[0] + d.drot));
+    } else if (p.tool === "map" && proj) {
+      const a = proj.unproject(d.x1, d.y1), b = proj.unproject(d.x2, d.y2);
+      if (Math.hypot(d.x2 - d.x1, d.y2 - d.y1) < 15) p.onMapClick(a[0], a[1], !!d.shift);
+      else p.onMapDrag(a, b);
+    } else if (p.tool === "camera" && proj && mapObj) {
+      // on a map, the camera tool flies the map camera to the drawn frame
+      const w = Math.abs(d.x2 - d.x1), h = Math.abs(d.y2 - d.y1);
+      const cam = mapCamAt(mapObj, p.t);
+      const a = toScene(tl, p.t, (d.x1 + d.x2) / 2, (d.y1 + d.y2) / 2);
+      const [lng, lat] = proj.unproject(a.x, a.y);
+      const fw = Math.max(30, w, h * (16 / 9)) / a.z;
+      const zoom = Math.round(Math.min(12, Math.max(0.5, cam.zoom + Math.log2(WIDTH / fw))) * 10) / 10;
+      p.onInsert(Math.max(w, h) < 30 ? `fly ${r2(lat)} ${r2(lng)} over 1.5s` : `fly ${r2(lat)} ${r2(lng)} zoom ${zoom} over 1.5s ease smooth`);
     } else if (p.tool === "camera") {
       const w = Math.abs(d.x2 - d.x1), h = Math.abs(d.y2 - d.y1);
       if (Math.max(w, h) < 30) { p.onInsert("camera to 960 540 zoom 1 over 1s ease smooth"); return; }
@@ -169,7 +211,12 @@ export function Stage(p: Props) {
     const el = e.dataTransfer.getData("application/x-element");
     if (el) {
       const v: Record<string, number> = { x: r10(m.sx), y: r10(m.sy), x2: r10(m.sx + 260), y2: r10(m.sy - 140) };
-      return p.onInsert(el.replace(/\{(x2|y2|x|y)\}/g, (_s, k: string) => String(v[k])));
+      if (/\{(lat|lng)\}/.test(el)) {
+        if (!proj) return p.onNotice("Map items need a map: add a map first.");
+        const [lng, lat] = proj.unproject(m.sx, m.sy);
+        v["lat"] = r2(lat); v["lng"] = r2(lng);
+      }
+      return p.onInsert(el.replace(/\{(x2|y2|x|y|lat|lng)\}/g, (_s, k: string) => String(v[k])));
     }
     const cmd = e.dataTransfer.getData("application/x-cmd");
     if (cmd) return p.onInsert(cmd);
@@ -227,10 +274,16 @@ export function Stage(p: Props) {
           ))}
         </div>
       )}
+      {handles && drag?.kind !== "move" && (["a", "b", "bend"] as const).map((w) => {
+        const pt = drag?.kind === "geo" && drag.which === w ? [drag.x, drag.y] : handles[w];
+        const c = toCanvas(tl, p.t, pt[0], pt[1]);
+        const col = w === "a" ? "bg-primary" : w === "b" ? "bg-destructive" : "bg-background border-primary";
+        return <span key={w} title={w === "a" ? "Drag the start" : w === "b" ? "Drag the end" : "Drag to bend"} className={`pointer-events-none absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background shadow ${col}`} style={{ left: pct(c.x, WIDTH), top: pct(c.y, HEIGHT) }} />;
+      })}
       {penPts && (
         <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${WIDTH} ${HEIGHT}`}>
           <g className="stroke-primary" fill="none" strokeWidth={8} strokeDasharray="16 10">
-            {(p.tool === "arrow" || p.tool === "highlight") && <line x1={penPts.x1} y1={penPts.y1} x2={penPts.x2} y2={penPts.y2} />}
+            {(p.tool === "arrow" || p.tool === "highlight" || p.tool === "map") && <line x1={penPts.x1} y1={penPts.y1} x2={penPts.x2} y2={penPts.y2} />}
             {p.tool === "circle" && <circle cx={penPts.x1} cy={penPts.y1} r={Math.hypot(penPts.x2 - penPts.x1, penPts.y2 - penPts.y1)} />}
             {(p.tool === "box" || p.tool === "camera") && <rect x={Math.min(penPts.x1, penPts.x2)} y={Math.min(penPts.y1, penPts.y2)} width={Math.abs(penPts.x2 - penPts.x1)} height={Math.abs(penPts.y2 - penPts.y1)} rx={p.tool === "camera" ? 16 : 0} />}
           </g>

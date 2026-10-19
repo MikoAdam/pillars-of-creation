@@ -1,13 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video, RotateCcw, Film } from "lucide-react";
+import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video, RotateCcw, Film, Globe2 } from "lucide-react";
+import { featureAt, loadGeo, toNorm } from "@/render/geo";
+import { MapInspector } from "@/editor/MapPanel";
 import { ExportDialog } from "@/editor/ExportDialog";
 import { VoicePanel } from "@/editor/VoicePanel";
 import { deleteAudio, loadAudio, saveAudio, type AudioItem } from "@/editor/audioStore";
 import { cuesToCode, transcribe } from "@/editor/transcribe";
 import { run } from "@/lang/interpreter";
-import { styleValues, type Timeline, type TObj } from "@/lang/timeline";
-import { insertAtTime, removeFx, resetStyle, setStyle, writeFx, writeMove, writeOver, writeProp, writeScale, writeStart } from "@/lang/writeback";
+import { mapCamAt, styleValues, type Timeline, type TObj } from "@/lang/timeline";
+import { insertAtTime, removeFx, resetStyle, setStyle, writeFx, writeMove, writeOver, writeProp, writeScale, writeStart, writeGeoMove, writeGeoEnd, writeBend, writeMapCam } from "@/lang/writeback";
 import { Library, Inspector } from "@/editor/Library";
 import { applyStyle, getTheme, THEMES } from "@/render/theme";
 import { StylePanel } from "@/editor/StylePanel";
@@ -43,7 +45,8 @@ const TOOLS: { id: Tool; icon: typeof Type; label: string; key: string }[] = [
   { id: "circle", icon: Circle, label: "Circle", key: "c" },
   { id: "box", icon: Square, label: "Box", key: "b" },
   { id: "highlight", icon: Highlighter, label: "Highlighter", key: "h" },
-  { id: "camera", icon: Video, label: "Camera: draw a frame to zoom to", key: "k" },
+  { id: "camera", icon: Video, label: "Camera: draw a frame to zoom to (on a map: fly there)", key: "k" },
+  { id: "map", icon: Globe2, label: "Map: click a country to colour it (Shift = region), drag between places for an attack arrow", key: "m" },
 ];
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}.${Math.floor((s % 1) * 10)}`;
@@ -91,14 +94,20 @@ function Studio() {
   }, [code]);
 
   // re-run program 300ms after typing stops; keep last good timeline on error
+  const [geoVersion, setGeoVersion] = useState(0);
   useEffect(() => {
     const id = setTimeout(() => {
       const r = run(code);
-      if (r.ok) { setTimeline(r.timeline); setError(null); }
-      else setError(r.error);
+      if (r.ok) {
+        setTimeline(r.timeline); setError(null);
+        // map outlines load once in the background, then the script runs again
+        if (r.timeline.needsGeo?.length) void Promise.all(r.timeline.needsGeo.map(loadGeo)).then(() => setGeoVersion((v) => v + 1)).catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
+      } else setError(r.error);
     }, 300);
     return () => clearTimeout(id);
-  }, [code]);
+  }, [code, geoVersion]);
+  const [mapColor, setMapColor] = useState("blue");
+  const [mapAnim, setMapAnim] = useState("fade");
 
   // load images for media items
   useEffect(() => {
@@ -201,11 +210,45 @@ function Studio() {
 
   // hand actions: all go through code
   const hand = (next: string) => { if (next !== hist.codeRef.current) hist.setHand(next); };
-  const onMove = (o: TObj, x: number, y: number) => hand(writeMove(hist.codeRef.current, timeline, o, t, x, y));
-  const onScale = (o: TObj, s: number) => hand(writeScale(hist.codeRef.current, timeline, o, t, s));
+  const onMove = (o: TObj, x: number, y: number) =>
+    hand(o.data?.geo || o.kind === "map" ? writeGeoMove(hist.codeRef.current, timeline, o, t, x, y) : writeMove(hist.codeRef.current, timeline, o, t, x, y));
+  const onScale = (o: TObj, s: number) =>
+    hand(o.kind === "map" ? writeMapCam(hist.codeRef.current, timeline, o, t, "zoom", [Math.min(14, Math.max(0.3, mapCamAt(o, t).zoom + Math.log2(s)))]) : writeScale(hist.codeRef.current, timeline, o, t, s));
+  const placeName = (name: string) => (/^[a-z][a-z0-9_]*$/i.test(name) ? name.toLowerCase() : `"${name.toLowerCase()}"`);
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  const onMapClick = async (lng: number, lat: number, region: boolean) => {
+    const [x, y] = toNorm(lng, lat);
+    if (region) {
+      await loadGeo("regions");
+      const rf = featureAt("regions", x, y);
+      if (!rf) return setNotice("No region there. Shift-click inside a country.");
+      const cf = featureAt("countries", x, y);
+      return onInsert(`region ${placeName(rf.name)} ${placeName(cf?.name ?? rf.country ?? "")} ${mapColor} ${mapAnim}`);
+    }
+    const f = featureAt("countries", x, y);
+    if (!f) return setNotice("That's sea. Click inside a country to colour it.");
+    onInsert(`country ${placeName(f.name)} ${mapColor} ${mapAnim}`);
+  };
+  const onMapDrag = (a: [number, number], b: [number, number]) => {
+    const fa = featureAt("countries", ...toNorm(a[0], a[1])), fb = featureAt("countries", ...toNorm(b[0], b[1]));
+    const pa = fa && fb && fa !== fb ? placeName(fa.name) : `${r2(a[1])} ${r2(a[0])}`;
+    const pb = fa && fb && fa !== fb ? placeName(fb.name) : `${r2(b[1])} ${r2(b[0])}`;
+    onInsert(`attack ${pa} ${pb} ${mapColor === "blue" ? "red" : mapColor}`);
+  };
+  const onGeoHandle = (o: TObj, w: "a" | "b" | "bend", x: number, y: number) =>
+    hand(w === "bend" ? writeBend(hist.codeRef.current, o, t, x, y) : writeGeoEnd(hist.codeRef.current, o, t, w, x, y));
   const onInsert = (cmd: string) => hand(insertAtTime(hist.codeRef.current, timeline, t, cmd).code);
-  const onInsertCenter = (cmd: string) => onInsert(cmd.replace("{x2}", "1220").replace("{y2}", "400").replace("{x}", "960").replace("{y}", "540"));
-  const onRotate = (o: TObj, deg: number) => hand(writeProp(hist.codeRef.current, timeline, o, t, "rot", deg));
+  const onInsertCenter = (cmd: string) => {
+    if (/\{(lat|lng)\}/.test(cmd)) {
+      const m = [...timeline.objects].reverse().find((o) => o.kind === "map" && t >= o.start && t < o.end);
+      if (!m) return setNotice("Map items need a map: add a map first.");
+      const c = mapCamAt(m, t);
+      cmd = cmd.replace("{lat}", String(r2(c.lat))).replace("{lng}", String(r2(c.lng)));
+    }
+    onInsert(cmd.replace("{x2}", "1220").replace("{y2}", "400").replace("{x}", "960").replace("{y}", "540"));
+  };
+  const onRotate = (o: TObj, deg: number) =>
+    hand(o.kind === "map" ? writeMapCam(hist.codeRef.current, timeline, o, t, "turn", [Math.round(mapCamAt(o, t).turn - deg)]) : writeProp(hist.codeRef.current, timeline, o, t, "rot", deg));
   const onOpacity = (o: TObj, v: number) => hand(writeProp(hist.codeRef.current, timeline, o, t, "opacity", v));
   const onFx = (o: TObj, f: FxDrop) => {
     const c = hist.codeRef.current;
@@ -328,7 +371,7 @@ function Studio() {
 
         <section className="flex min-w-0 flex-1 flex-col">
           <div className="px-4 pt-3">
-            <Library selected={selectedObj} onInsert={onInsert} onInsertCenter={onInsertCenter} onFx={onFx} onNotice={setNotice} />
+            <Library selected={selectedObj} mapColor={mapColor} mapAnim={mapAnim} onMapColor={setMapColor} onMapAnim={setMapAnim} onInsert={onInsert} onInsertCenter={onInsertCenter} onFx={onFx} onNotice={setNotice} />
           </div>
           <div className="flex min-h-0 flex-1 gap-3 px-4 pb-3 pt-3">
             <div className="flex shrink-0 flex-col gap-1 self-start rounded-md border border-border bg-card p-1">
@@ -362,6 +405,9 @@ function Studio() {
                   onInsert={onInsert}
                   onDropFiles={(f) => void onDropFiles(f)}
                   onDropAsset={insertPhoto}
+                  onMapClick={(lng, lat, r) => void onMapClick(lng, lat, r)}
+                  onMapDrag={onMapDrag}
+                  onGeoHandle={onGeoHandle}
                 />
                 <div className="mt-3 flex items-center gap-3">
                   <button onClick={() => { seek(0); setPlaying(true); }} title="Restart from the beginning (R)" className="flex items-center gap-1.5 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-accent">
@@ -374,7 +420,12 @@ function Studio() {
                   <input type="range" min={0} max={total} step={1 / 30} value={Math.min(t, total)} onChange={(e) => scrub(Number(e.target.value))} className="flex-1 accent-primary" />
                   <span className="w-28 text-right font-mono text-xs tabular-nums text-muted-foreground">{fmt(t)} / {fmt(total)}</span>
                 </div>
-                {selectedObj && (
+                {selectedObj?.kind === "map" && (
+                  <div className="mt-2">
+                    <MapInspector o={selectedObj} t={t} onSet={(k, v) => hand(writeMapCam(hist.codeRef.current, timeline, selectedObj, t, k, [v]))} />
+                  </div>
+                )}
+                {selectedObj && selectedObj.kind !== "map" && (
                   <div className="mt-2">
                     <Inspector
                       o={selectedObj}
