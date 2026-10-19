@@ -151,6 +151,8 @@ export function parse(src: string): Program {
       const ll = lines[idx];
       const toks = ll.tokens;
       if (!toks.length) { idx++; continue; }
+      // legacy separator lines like "---" are ignored
+      if (toks.every((t) => t.kind === "op" && t.text === "-")) { idx++; continue; }
       const first = toks[0];
       if (first.kind === "ident" && first.text === "end") {
         if (top) throw new LangError('"end" without a matching repeat/for', ll.line, first.col, 3);
