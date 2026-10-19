@@ -62,67 +62,65 @@ wait 3s
   },
   {
     id: "showcase",
-    name: "Feature Showcase (everything)",
-    code: `project "Everything Paint & Turtle Can Do" theme clean_modern
-style radius 28
+    name: "Feature Showcase (university briefing)",
+    code: `project "Department of Astrophysics — Research Briefing" theme clean_modern
+style radius 12
 
-# --- 1. Kinetic text with entrance + exit
-say "Every *feature*, one video" beat 0.3s enter pop exit blur
-wait 2.5s
-whip 0.5
+# --- 1. Title card
+say "Star Formation in the *Eagle Nebula*" beat 0.35s enter fade exit fade
+wait 3s
+crossfade 0.8
 
-# --- 2. Photo: Ken Burns zoom, caption, camera move, rotate, fade
-show photo @pillars as nebula enter blur
-zoom nebula 1.0 to 1.2 over 5s ease smooth
-caption nebula "Photos zoom, pan and get captions"
-camera to 1100 450 zoom 1.2 over 3s ease smooth
-rotate nebula 3 over 2s delay 2s
-fade nebula to 0.6 over 1s delay 3.5s
-wait 5s
-push 0.6
+# --- 2. Photo: slow zoom, caption, gentle camera drift
+show photo @pillars as nebula enter fade
+zoom nebula 1.0 to 1.12 over 6s ease smooth
+caption nebula "Fig. 1 — The Pillars of Creation, M16"
+camera to 1050 500 zoom 1.08 over 5s ease smooth
+rotate nebula 1 over 4s delay 1s
+fade nebula to 0.85 over 1s delay 4.5s
+wait 6s
+wipe 0.7
 
-# --- 3. Counter with source, unverified badge, pulse and shake
-count 6500 suffix " ly" label "Distance to the Pillars" over 2s as dist enter spin
-source dist "NASA" https://science.nasa.gov
+# --- 3. Key figure with citation
+count 6500 suffix " ly" label "Distance from Earth" over 2.5s as dist enter rise
+source dist "NASA Science" https://science.nasa.gov
 unverified dist
-pulse dist 0.2 over 0.6s delay 2s
-shake 14 over 0.4s delay 2.2s
-wait 3.5s
-wipe 0.6
+pulse dist 0.06 over 0.8s delay 2.6s
+shake 3 over 0.3s delay 2.6s
+wait 4s
+crossfade 0.7
 
-# --- 4. Bar chart with pen annotations
-bars "Pen tools" "Arrow" 40 "Circle" 65 "Box" 80 "Highlight" 95 over 3s enter rise
-circle at 1450 560 radius 150 over 0.6s delay 3s
-box at 300 820 size 500 120 over 0.6s delay 3.3s
+# --- 4. Results with annotations
+bars "Observed protostars by region" "Pillar I" 40 "Pillar II" 65 "Pillar III" 80 "Periphery" 95 over 3s enter rise
+box at 300 820 size 500 120 over 0.6s delay 3.2s
 highlight from 320 880 to 780 880 over 0.6s delay 3.6s
-wait 4.5s
+circle at 1450 560 radius 150 over 0.6s delay 4s
+wait 5s
+push 0.7
+
+# --- 5. Trend with focused camera
+line "Publications per year" "2019" 2 "2020" 5 "2021" 9 "2022" 20 over 3s as growth enter fade
+camera to 1500 350 zoom 1.3 over 1.2s ease smooth delay 3s
+wait 5s
 blur 0.6
 
-# --- 5. Line chart with snap camera
-line "Growth" "Q1" 2 "Q2" 5 "Q3" 9 "Q4" 20 over 3s as growth enter slide_left
-camera to 1500 350 zoom 1.5 over 0.8s ease snap delay 3s
+# --- 6. Press coverage
+headline "New images reveal stellar nurseries in unprecedented detail" paper "UNIVERSITY NEWS" body "Researchers from the department analysed infrared data from the James Webb Space Telescope." mark "unprecedented detail" over 3s enter fade
 wait 4.5s
-zoom
+crossfade 0.8
 
-# --- 6. Headline with marker sweeps
-headline "Studio ships every feature at once" paper "THE DAILY CANVAS" body "Code and hand editing stay perfectly in sync." mark "every feature" over 3s enter drop
-wait 4s
-crossfade 0.6
-
-# --- 7. Turtle code: variables, loops, move along a curve, wiggle
+# --- 7. Methodology diagram drawn with a loop
 let gap = 380
-say "Loops draw *patterns*" at 960 220 beat 0.25s as title
-repeat 3
-  wait 0.3s
-end
+say "Data *pipeline*" at 960 220 beat 0.3s as title enter fade
+wait 0.8s
 for i from 0 to 3
-  arrow from (250 + i*gap) 800 to (450 + i*gap) 650 over 0.4s
+  arrow from (250 + i*gap) 650 to (450 + i*gap) 650 over 0.4s
   wait 0.3s
 end
-move title to 960 500 curve 120 over 1.2s ease spring
-wiggle title over 0.8s delay 1.2s
-scale title 1.2 over 0.5s delay 2s
-wait 3s
+move title to 960 420 curve 40 over 1.2s ease smooth
+scale title 1.1 over 0.6s delay 1.4s
+wiggle title over 0.4s delay 2.2s
+wait 3.5s
 `,
   },
 ];
