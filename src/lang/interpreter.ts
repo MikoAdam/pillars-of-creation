@@ -503,9 +503,9 @@ export function interpret(src: string): Timeline {
       }
       case "zoom": {
         if (s.legacy && src(0)?.kind === "word") {
-          // zoom: COUNTRY — frame the country smoothly, block 0.6s
+          // zoom: COUNTRY — frame the country smoothly, block 0.6s (unknown names are silently skipped)
           if (!geoReady("countries")) { needGeo.add("countries"); return; }
-          const f = country(src(0), s);
+          const f = src(0).kind === "word" ? findCountry(src(0).name) ?? null : country(src(0), s);
           if (f) {
             const m = needMap(s);
             const c = fitBbox(f.bbox, 0.07);
