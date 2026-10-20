@@ -624,6 +624,7 @@ export function interpret(src: string): Timeline {
   function color(a: Arg | undefined, s: Extract<Stmt, { kind: "cmd" }>, fallback?: string): string {
     if (!a) { if (fallback) return fallback; err(`Expected a colour (${MAP_COLOR_NAMES.slice(0, 8).join(", ")}…)`, nearOf(s)); }
     if (a!.kind === "str" && /^#[0-9a-f]{6}$/i.test(a!.v)) return a!.v;
+    if (a!.kind === "word" && /^#[0-9a-f]{3}$|^#[0-9a-f]{6}$/i.test(a!.name)) return a!.name;
     if (a!.kind === "word" && MAP_COLORS[a!.name]) return MAP_COLORS[a!.name];
     return err(`Unknown colour. Use ${MAP_COLOR_NAMES.join(", ")} or "#rrggbb"`, a!);
   }
