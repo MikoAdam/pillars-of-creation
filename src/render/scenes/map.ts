@@ -67,9 +67,9 @@ const visible = (b: number[]) => b[2] > -50 && b[0] < 1970 && b[3] > -50 && b[1]
 
 /** Cached 45°-stripe pattern for occupied territory fills. */
 const stripeCache = new Map<string, CanvasPattern>();
-function stripePattern(ctx: CanvasRenderingContext2D, color: string): CanvasPattern | string {
-  let pat = stripeCache.get(color);
-  if (pat) return pat;
+function stripePattern(ctx: CanvasRenderingContext2D, color: string): CanvasPattern {
+  const cached = stripeCache.get(color);
+  if (cached) return cached;
   const tile = document.createElement("canvas");
   const T = Math.round(32 * S);
   tile.width = T; tile.height = T;
@@ -84,7 +84,8 @@ function stripePattern(ctx: CanvasRenderingContext2D, color: string): CanvasPatt
     tc.moveTo(i, T + 2); tc.lineTo(i + T + 2, -2);
     tc.stroke();
   }
-  pat = ctx.createPattern(tile, "repeat") ?? color;
+  const pat = ctx.createPattern(tile, "repeat");
+  if (!pat) throw new Error("no pattern");
   stripeCache.set(color, pat);
   return pat;
 }

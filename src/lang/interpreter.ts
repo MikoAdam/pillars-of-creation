@@ -405,7 +405,7 @@ export function interpret(src: string): Timeline {
         return;
       }
       case "line": {
-        if (s.legacy) return mapCommand({ ...s, name: "route" }, p, start); // connection line
+        if (s.legacy) { mapCommand({ ...s, name: "route" }, p, start); return; } // connection line
         const title = str(src(0), "a chart title", near);
         const points: { x: string; y: number }[] = [];
         for (let i = 1; i < p.pos.length; i += 2) {
@@ -439,7 +439,7 @@ export function interpret(src: string): Timeline {
       }
       case "arrow":
       case "highlight": {
-        if (s.legacy && s.name === "arrow") return mapCommand({ ...s, name: "tag" }, p, start); // pointer label
+        if (s.legacy && s.name === "arrow") { mapCommand({ ...s, name: "tag" }, p, start); return; } // pointer label
         const fg = kw1(p, "from"), tg = kw1(p, "to");
         if (!fg || !tg) err(`${s.name} needs "from x y to x y"`, near);
         const x1 = num(fg![1], "x", fg![0]), y1 = num(fg![2], "y", fg![0]);
@@ -503,9 +503,9 @@ export function interpret(src: string): Timeline {
       }
       case "zoom": {
         if (s.legacy && src(0)?.kind === "word") {
-          // zoom: COUNTRY — frame the country smoothly, block 0.6s
+          // zoom: COUNTRY — frame the country smoothly, block 0.6s (unknown names are silently skipped)
           if (!geoReady("countries")) { needGeo.add("countries"); return; }
-          const f = country(src(0), s);
+          const f = src(0).kind === "word" ? findCountry(src(0).name) ?? null : country(src(0), s);
           if (f) {
             const m = needMap(s);
             const c = fitBbox(f.bbox, 0.07);
@@ -624,6 +624,7 @@ export function interpret(src: string): Timeline {
   function color(a: Arg | undefined, s: Extract<Stmt, { kind: "cmd" }>, fallback?: string): string {
     if (!a) { if (fallback) return fallback; err(`Expected a colour (${MAP_COLOR_NAMES.slice(0, 8).join(", ")}…)`, nearOf(s)); }
     if (a!.kind === "str" && /^#[0-9a-f]{6}$/i.test(a!.v)) return a!.v;
+    if (a!.kind === "word" && /^#[0-9a-f]{3}$|^#[0-9a-f]{6}$/i.test(a!.name)) return a!.name;
     if (a!.kind === "word" && MAP_COLORS[a!.name]) return MAP_COLORS[a!.name];
     return err(`Unknown colour. Use ${MAP_COLOR_NAMES.join(", ")} or "#rrggbb"`, a!);
   }
@@ -823,8 +824,9 @@ export function interpret(src: string): Timeline {
           } else {
             const pl = place(A, 0, s); aLL = pl.ll; aSpans = pl.spans; aName = pl.nameSpan; ai = pl.used;
           }
-          if (A[ai]?.kind === "word" && A[ai].name === "to") {
-            const la = num(A[ai + 1], "latitude", A[ai]), ln = num(A[ai + 2], "longitude", A[ai + 1] ?? A[ai]);
+          const toArg = A[ai];
+          if (toArg?.kind === "word" && toArg.name === "to") {
+            const la = num(A[ai + 1], "latitude", toArg), ln = num(A[ai + 2], "longitude", A[ai + 1] ?? toArg);
             bLL = [ln.v, la.v]; bSpans = [la.span, ln.span]; ai += 3;
           } else {
             const pl = place(A, ai, s); bLL = pl.ll; bSpans = pl.spans; bName = pl.nameSpan; ai += pl.used;
@@ -833,7 +835,8 @@ export function interpret(src: string): Timeline {
           let width = 1, head = NaN, dur = 0.8, slot = 0;
           let col = MAP_COLORS["red"];
           const FIELD = ["curve", "width", "head", "dur", "anim"];
-          if (A[ai] && (A[ai].kind === "word" || A[ai].kind === "str") && !(A[ai].kind === "word" && FIELD.includes(A[ai].name))) { col = color(A[ai], s); ai++; }
+          const colArg = A[ai];
+          if (colArg && (colArg.kind === "word" || colArg.kind === "str") && !(colArg.kind === "word" && FIELD.includes(colArg.name))) { col = color(colArg, s); ai++; }
           while (ai < A.length) {
             const a2 = A[ai];
             if (a2.kind === "word" && FIELD.includes(a2.name)) {
@@ -919,7 +922,9 @@ export function interpret(src: string): Timeline {
         return true;
       }
       case "year": {
-        const text = str(A[0], "a year or date", near);
+        const text = s.legacy && A[0] && (A[0].kind === "num" || A[0].kind === "expr")
+          ? String(num(A[0], "a year", near).v)
+          : str(A[0], "a year or date", near);
         const hl = A[1]?.kind === "word" && A[1].name === "highlight";
         if (yearObj && yearObj.end === Infinity) yearObj.end = start;
         // pill badge, 28 CSS px font, padding 14/32 → top-left at 32,32 in the frame
@@ -1053,6 +1058,23 @@ export function interpret(src: string): Timeline {
         m.lines.push(s.line);
         return true;
       }
+    }
+    // legacy country-prefix fill: `poland: red occupied pulse` — silent when unknown
+    if (s.legacy && !geoReady("countries")) { needGeo.add("countries"); return true; }
+    if (s.legacy) {
+      const f = findCountry(s.name) ?? null;
+      if (!f) return true;
+      const col = A[0] ? color(A[0], s) : MAP_COLORS["blue"];
+      let anim: MapFill["anim"] = "none", occupied = false;
+      for (const a of A.slice(1)) {
+        if (a.kind !== "word") continue;
+        if (a.name === "occupied") occupied = true;
+        else if ((MAP_ANIMS as readonly string[]).includes(a.name)) anim = a.name as MapFill["anim"];
+      }
+      const m = needMap(s);
+      applyFill(m, f, col, anim, FILL_DUR[anim], occupied, false, start, s.line);
+      for (const t of territoriesOf(f)) applyFill(m, t, col, anim, FILL_DUR[anim], false, false, start, s.line);
+      return true;
     }
     return false;
   }

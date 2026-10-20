@@ -6,7 +6,6 @@
  * Lookup, aliases, curated centres, disputed-territory handling and sovereign-territory
  * expansion replicate the original map creator (config.js / geodata.js / executor.js).
  */
-import regionsAsset from "@/assets/geo-regions.json.asset.json";
 
 export type GeoKind = "countries" | "regions";
 
@@ -81,10 +80,10 @@ function build(kind: GeoKind, json: any): GeoFeature[] {
       const pop = Number(p.POP_EST);
       out.push({
         name, keys, rings, bbox: [minX, minY, maxX, maxY], center,
-        admin: p.ADMIN ? fold(String(p.ADMIN)) : undefined,
-        sovereign: p.SOVEREIGNT ? fold(String(p.SOVEREIGNT)) : undefined,
-        type: p.TYPE ? String(p.TYPE) : undefined,
-        pop: Number.isFinite(pop) ? pop : undefined,
+        ...(p.ADMIN ? { admin: fold(String(p.ADMIN)) } : {}),
+        ...(p.SOVEREIGNT ? { sovereign: fold(String(p.SOVEREIGNT)) } : {}),
+        ...(p.TYPE ? { type: String(p.TYPE) } : {}),
+        ...(Number.isFinite(pop) ? { pop } : {}),
       });
     } else {
       const name = String(p.name_en ?? p.name ?? p.woe_name ?? "");
@@ -127,10 +126,10 @@ export function setGeoData(kind: GeoKind, json: unknown) {
   store[kind] = build(kind, json);
 }
 
-/** Fetch the outlines once (browser). Regions ship as a CDN asset (>10 MB). */
+/** Fetch the outlines once (browser). */
 export function loadGeo(kind: GeoKind): Promise<void> {
   if (store[kind]) return Promise.resolve();
-  pending[kind] ??= fetch(kind === "regions" ? regionsAsset.url : `/geo/${kind}.json`)
+  pending[kind] ??= fetch(`/geo/${kind}.json`)
     .then((r) => r.json())
     .then((j) => setGeoData(kind, j));
   return pending[kind]!;

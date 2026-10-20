@@ -68,3 +68,85 @@ describe("maps", () => {
     expect(t.objects.find((o) => o.kind === "pin")!.createSpans.at!.every(Boolean)).toBe(true);
   });
 });
+
+describe("legacy map commands (colon form)", () => {
+  it("parses the colon form and colors a country", () => {
+    const t = tl('map 48 15 zoom 4\npoland: #dc2626');
+    const m = t.objects.find((o) => o.kind === "map");
+    expect(m).toBeTruthy();
+    expect(m!.data.fills.length).toBe(1);
+    expect(m!.data.fills[0].color).toBe("#dc2626");
+    expect(m!.data.fills[0].anim).toBe("none");
+  });
+  it("fly blocks the cursor for 1.2s and re-aims the camera", () => {
+    const t = tl("map 48 15 zoom 4\nfly: 52 13, 6\npin 52 13 tank red");
+    expect(t.objects.find((o) => o.kind === "pin")!.start).toBeCloseTo(1.2, 5);
+  });
+  it("zoom: frames a country in 0.6s", () => {
+    const t = tl("map 20 10 zoom 2\nzoom: france\npin 48.85 2.35 tank red");
+    expect(t.objects.find((o) => o.kind === "pin")!.start).toBeCloseTo(0.6, 5);
+  });
+  it("attack with two countries and the named coordinate form", () => {
+    const t = tl("map 45 15 zoom 4\nattack: poland, belarus, #ca8a03");
+    const a = t.objects.find((o) => o.kind === "attack")!;
+    expect(a.data.color).toBe("#ca8a03");
+    const t2 = tl("map 30 10 zoom 5\nattack: from 52 13, to 50 20, color red, width 2, head 2, dur 500");
+    const a2 = t2.objects.find((o) => o.kind === "attack")!;
+    expect(a2.data.a).toEqual([13, 52]);
+    expect(a2.data.width).toBe(2);
+    expect(a2.data.head).toBe(2);
+    expect(a2.progress.segs[0].t1 - a2.progress.segs[0].t0).toBe(0.5);
+  });
+  it("line between two countries makes a straight dashed route", () => {
+    const t = tl("map 45 15 zoom 4\nline: germany, poland");
+    const r = t.objects.find((o) => o.kind === "route")!;
+    expect(r.data.straight).toBe(true);
+  });
+  it("bubble without coordinates is a screen-fixed subtitle", () => {
+    const t = tl('map 45 15 zoom 4\nbubble "Something happened"');
+    const b = t.objects.find((o) => o.kind === "bubble")!;
+    expect(b.data.subtitle).toBe(true);
+    expect(b.pos.base[0]).toBe(960);
+    expect(b.pos.base[1]).toBe(1067);
+  });
+  it("label becomes a pointer tag and year becomes a top-left pill", () => {
+    const t = tl('map 45 15 zoom 4\nlabel: 52 13, "Checkpoint Charlie"\nyear: 1989');
+    const tag = t.objects.find((o) => o.kind === "tag")!;
+    expect(tag.data.dir).toBe("right");
+    const y = t.objects.find((o) => o.kind === "year")!;
+    expect(y.data.text).toBe("1989");
+    expect(y.pos.base[0]).toBe(32);
+  });
+  it("legend auto snapshots country fills in command order", () => {
+    const t = tl('map 45 15 zoom 4\nlegend: auto\npoland: red\nserbia: blue');
+    const l = t.objects.find((o) => o.kind === "legend")!;
+    expect(l.data.entries.map((e: any) => e.label)).toEqual(["Poland", "Serbia"]);
+    expect(l.data.entries.map((e: any) => e.color)).toEqual(["#dc2626", "#2563eb"]);
+  });
+  it("effects are typed and unknown ones are silently skipped", () => {
+    const t = tl("map 45 15 zoom 4\neffect: 44.8 20.46, explosion, red");
+    const e = t.objects.find((o) => o.kind === "effect")!;
+    expect(e.data.symbol).toBe("explosion");
+    const r = run("map 45 15 zoom 4\neffect: 44.8 20.46, zombie, red");
+    expect(r.ok).toBe(true);
+  });
+  it("remove effects / lines / colors end their own kinds", () => {
+    const t = tl("map 45 15 zoom 4\neffect: 44.8 20.46, tank\nattack: poland, belarus, red\nline: germany, poland\npoland: blue\nwait 1s\nremove effects\nremove lines\nclear poland");
+    const e = t.objects.find((o) => o.kind === "effect")!;
+    const a = t.objects.find((o) => o.kind === "attack")!;
+    const r = t.objects.find((o) => o.kind === "route")!;
+    expect(e.end).toBe(1);
+    expect(a.end).toBe(t.duration); // unremoved attacks persist to the end
+    expect(r.end).toBe(1);
+    expect(t.objects.find((o) => o.kind === "map")!.data.fills[0].end).toBe(1);
+  });
+  it("rename replaces a country label and unrename removes it", () => {
+    const t = tl('map 45 15 zoom 4\nrename britain "United Kingdom"\nwait 1s\nunrename britain');
+    const m = t.objects.find((o) => o.kind === "map")!;
+    expect(m.data.renames[0].text).toBe("United Kingdom");
+    expect(m.data.renames[0].end).toBe(1);
+  });
+  it("unknown legacy commands never crash the run", () => {
+    expect(tl("map 45 15 zoom 4\natlantis: red\nzoom: atlantis").objects.find((o) => o.kind === "map")).toBeTruthy();
+  });
+});
