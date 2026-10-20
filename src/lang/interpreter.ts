@@ -922,7 +922,9 @@ export function interpret(src: string): Timeline {
         return true;
       }
       case "year": {
-        const text = str(A[0], "a year or date", near);
+        const text = s.legacy && A[0] && (A[0].kind === "num" || A[0].kind === "expr")
+          ? String(num(A[0], "a year", near).v)
+          : str(A[0], "a year or date", near);
         const hl = A[1]?.kind === "word" && A[1].name === "highlight";
         if (yearObj && yearObj.end === Infinity) yearObj.end = start;
         // pill badge, 28 CSS px font, padding 14/32 → top-left at 32,32 in the frame
