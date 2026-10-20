@@ -136,7 +136,7 @@ describe("legacy map commands (colon form)", () => {
     const a = t.objects.find((o) => o.kind === "attack")!;
     const r = t.objects.find((o) => o.kind === "route")!;
     expect(e.end).toBe(1);
-    expect(a.end).toBe(1);
+    expect(a.end).toBe(t.duration); // unremoved attacks persist to the end
     expect(r.end).toBe(1);
     expect(t.objects.find((o) => o.kind === "map")!.data.fills[0].end).toBe(1);
   });
