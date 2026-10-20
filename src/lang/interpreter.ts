@@ -823,8 +823,9 @@ export function interpret(src: string): Timeline {
           } else {
             const pl = place(A, 0, s); aLL = pl.ll; aSpans = pl.spans; aName = pl.nameSpan; ai = pl.used;
           }
-          if (A[ai]?.kind === "word" && A[ai].name === "to") {
-            const la = num(A[ai + 1], "latitude", A[ai]), ln = num(A[ai + 2], "longitude", A[ai + 1] ?? A[ai]);
+          const toArg = A[ai];
+          if (toArg?.kind === "word" && toArg.name === "to") {
+            const la = num(A[ai + 1], "latitude", toArg), ln = num(A[ai + 2], "longitude", A[ai + 1] ?? toArg);
             bLL = [ln.v, la.v]; bSpans = [la.span, ln.span]; ai += 3;
           } else {
             const pl = place(A, ai, s); bLL = pl.ll; bSpans = pl.spans; bName = pl.nameSpan; ai += pl.used;
@@ -833,7 +834,8 @@ export function interpret(src: string): Timeline {
           let width = 1, head = NaN, dur = 0.8, slot = 0;
           let col = MAP_COLORS["red"];
           const FIELD = ["curve", "width", "head", "dur", "anim"];
-          if (A[ai] && (A[ai].kind === "word" || A[ai].kind === "str") && !(A[ai].kind === "word" && FIELD.includes(A[ai].name))) { col = color(A[ai], s); ai++; }
+          const colArg = A[ai];
+          if (colArg && (colArg.kind === "word" || colArg.kind === "str") && !(colArg.kind === "word" && FIELD.includes(colArg.name))) { col = color(colArg, s); ai++; }
           while (ai < A.length) {
             const a2 = A[ai];
             if (a2.kind === "word" && FIELD.includes(a2.name)) {
