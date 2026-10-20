@@ -6,7 +6,6 @@
  * Lookup, aliases, curated centres, disputed-territory handling and sovereign-territory
  * expansion replicate the original map creator (config.js / geodata.js / executor.js).
  */
-import regionsAsset from "@/assets/geo-regions.json.asset.json";
 
 export type GeoKind = "countries" | "regions";
 
