@@ -1059,7 +1059,7 @@ export function interpret(src: string): Timeline {
     // legacy country-prefix fill: `poland: red occupied pulse` — silent when unknown
     if (s.legacy && !geoReady("countries")) { needGeo.add("countries"); return true; }
     if (s.legacy) {
-      const f = A[0] ? country(s.nameTok ? { kind: "word", name: s.name, tok: s.nameTok } as any : A[0], s) : null;
+      const f = findCountry(s.name) ?? null;
       if (!f) return true;
       const col = A[0] ? color(A[0], s) : MAP_COLORS["blue"];
       let anim: MapFill["anim"] = "none", occupied = false;
