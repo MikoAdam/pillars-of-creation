@@ -70,10 +70,9 @@ describe("maps", () => {
 });
 
 describe("legacy map commands (colon form)", () => {
-  const name = (o: { kind: string }) => o.kind;
   it("parses the colon form and colors a country", () => {
     const t = tl('map 48 15 zoom 4\npoland: #dc2626');
-    const m = t.objects.find(name)["kind"] === "map" ? t.objects.find((o) => o.kind === "map") : undefined;
+    const m = t.objects.find((o) => o.kind === "map");
     expect(m).toBeTruthy();
     expect(m!.data.fills.length).toBe(1);
     expect(m!.data.fills[0].color).toBe("#dc2626");
