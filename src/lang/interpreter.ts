@@ -405,7 +405,7 @@ export function interpret(src: string): Timeline {
         return;
       }
       case "line": {
-        if (s.legacy) return mapCommand({ ...s, name: "route" }, p, start); // connection line
+        if (s.legacy) { mapCommand({ ...s, name: "route" }, p, start); return; } // connection line
         const title = str(src(0), "a chart title", near);
         const points: { x: string; y: number }[] = [];
         for (let i = 1; i < p.pos.length; i += 2) {
@@ -439,7 +439,7 @@ export function interpret(src: string): Timeline {
       }
       case "arrow":
       case "highlight": {
-        if (s.legacy && s.name === "arrow") return mapCommand({ ...s, name: "tag" }, p, start); // pointer label
+        if (s.legacy && s.name === "arrow") { mapCommand({ ...s, name: "tag" }, p, start); return; } // pointer label
         const fg = kw1(p, "from"), tg = kw1(p, "to");
         if (!fg || !tg) err(`${s.name} needs "from x y to x y"`, near);
         const x1 = num(fg![1], "x", fg![0]), y1 = num(fg![2], "y", fg![0]);
