@@ -81,10 +81,10 @@ function build(kind: GeoKind, json: any): GeoFeature[] {
       const pop = Number(p.POP_EST);
       out.push({
         name, keys, rings, bbox: [minX, minY, maxX, maxY], center,
-        admin: p.ADMIN ? fold(String(p.ADMIN)) : undefined,
-        sovereign: p.SOVEREIGNT ? fold(String(p.SOVEREIGNT)) : undefined,
-        type: p.TYPE ? String(p.TYPE) : undefined,
-        pop: Number.isFinite(pop) ? pop : undefined,
+        ...(p.ADMIN ? { admin: fold(String(p.ADMIN)) } : {}),
+        ...(p.SOVEREIGNT ? { sovereign: fold(String(p.SOVEREIGNT)) } : {}),
+        ...(p.TYPE ? { type: String(p.TYPE) } : {}),
+        ...(Number.isFinite(pop) ? { pop } : {}),
       });
     } else {
       const name = String(p.name_en ?? p.name ?? p.woe_name ?? "");

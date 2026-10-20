@@ -48,6 +48,11 @@ export function lex(src: string): LexLine[] {
     let contentEnd = lineStart;
     while (i < raw.length) {
       const c = raw[i];
+      const startCol = i;
+      const push = (kind: TokKind, text: string, value: number | string, extra: Partial<Tok> = {}) => {
+        tokens.push({ kind, text, value, start: lineStart + startCol, end: lineStart + i, line, col: startCol, ...extra });
+        contentEnd = lineStart + i;
+      };
       if (c === " " || c === "\t" || c === "\r") {
         i++;
         continue;
@@ -63,11 +68,6 @@ export function lex(src: string): LexLine[] {
         }
         break;
       }
-      const startCol = i;
-      const push = (kind: TokKind, text: string, value: number | string, extra: Partial<Tok> = {}) => {
-        tokens.push({ kind, text, value, start: lineStart + startCol, end: lineStart + i, line, col: startCol, ...extra });
-        contentEnd = lineStart + i;
-      };
       if (c === '"') {
         i++;
         let s = "";
