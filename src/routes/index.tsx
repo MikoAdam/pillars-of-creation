@@ -104,7 +104,12 @@ function Studio() {
         const need = new Set(r.timeline.needsGeo ?? []);
         if (r.timeline.objects.some((o) => o.kind === "map") && !geoReady("countries")) need.add("countries");
         if (need.size) void Promise.all([...need].map(loadGeo)).then(() => setGeoVersion((v) => v + 1)).catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
-      } else setError(r.error);
+      } else {
+        setError(r.error);
+        // a map script can fail before the outlines arrive: load them, then run again
+        if (!geoReady("countries") && /^\s*(map|country|region|attack|fly|pin|[\w .-]+:)/m.test(code))
+          void loadGeo("countries").then(() => setGeoVersion((v) => v + 1)).catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
+      }
     }, 300);
     return () => clearTimeout(id);
   }, [code, geoVersion]);
