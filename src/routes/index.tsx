@@ -378,7 +378,13 @@ function Studio() {
               {TOOLS.map((tl) => (
                 <button
                   key={tl.id}
-                  onClick={() => setTool(tl.id)}
+                  onClick={() => {
+                    setTool(tl.id);
+                    if (tl.id === "map" && !timeline.objects.some((o) => o.kind === "map" && t >= o.start && t < o.end)) {
+                      onInsert("map 48 15 zoom 4");
+                      setNotice("Added a map of Europe. Click a country to colour it, drag between places for an attack arrow.");
+                    }
+                  }}
                   title={`${tl.label} (${tl.key.toUpperCase()})`}
                   className={`rounded p-2 ${tool === tl.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
                 >
