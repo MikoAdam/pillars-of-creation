@@ -97,12 +97,19 @@ function Studio() {
   const [geoVersion, setGeoVersion] = useState(0);
   useEffect(() => {
     const id = setTimeout(() => {
-      const r = run(code);
+      const r = run(code); console.log("DBG", r.ok, geoReady("countries"), r.ok ? r.timeline.needsGeo : r.error.message);
       if (r.ok) {
         setTimeline(r.timeline); setError(null);
         // map outlines load once in the background, then the script runs again
-        if (r.timeline.needsGeo?.length) void Promise.all(r.timeline.needsGeo.map(loadGeo)).then(() => setGeoVersion((v) => v + 1)).catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
-      } else setError(r.error);
+        const need = new Set(r.timeline.needsGeo ?? []);
+        if (r.timeline.objects.some((o) => o.kind === "map") && !geoReady("countries")) need.add("countries");
+        if (need.size) void Promise.all([...need].map(loadGeo)).then(() => setGeoVersion((v) => v + 1)).catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
+      } else {
+        setError(r.error);
+        // a map script can fail before the outlines arrive: load them, then run again
+        if (!geoReady("countries") && /^\s*(map|country|region|attack|fly|pin|[\w .-]+:)/m.test(code))
+          void loadGeo("countries").then(() => setGeoVersion((v) => v + 1)).catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
+      }
     }, 300);
     return () => clearTimeout(id);
   }, [code, geoVersion]);
