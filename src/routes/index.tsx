@@ -101,7 +101,9 @@ function Studio() {
       if (r.ok) {
         setTimeline(r.timeline); setError(null);
         // map outlines load once in the background, then the script runs again
-        if (r.timeline.needsGeo?.length) void Promise.all(r.timeline.needsGeo.map(loadGeo)).then(() => setGeoVersion((v) => v + 1)).catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
+        const need = new Set(r.timeline.needsGeo ?? []);
+        if (r.timeline.objects.some((o) => o.kind === "map") && !geoReady("countries")) need.add("countries");
+        if (need.size) void Promise.all([...need].map(loadGeo)).then(() => setGeoVersion((v) => v + 1)).catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
       } else setError(r.error);
     }, 300);
     return () => clearTimeout(id);
