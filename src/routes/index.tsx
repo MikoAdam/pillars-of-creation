@@ -97,7 +97,7 @@ function Studio() {
   const [geoVersion, setGeoVersion] = useState(0);
   useEffect(() => {
     const id = setTimeout(() => {
-      const r = run(code);
+      const r = run(code); console.log("DBG", r.ok, geoReady("countries"), r.ok ? r.timeline.needsGeo : r.error.message);
       if (r.ok) {
         setTimeline(r.timeline); setError(null);
         // map outlines load once in the background, then the script runs again
