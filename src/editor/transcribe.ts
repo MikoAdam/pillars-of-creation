@@ -1,5 +1,5 @@
 export interface Cue { t0: number; t1: number; text: string }
-export type TranscribeProgress = { stage: "download" | "transcribe"; progress: number };
+export type TranscribeProgress = { stage: "download" | "transcribe"; progress: number; text?: string };
 
 /** Decode any audio file to 16 kHz mono samples (what Whisper expects). */
 async function toMono16k(blob: Blob): Promise<{ samples: Float32Array; duration: number }> {
@@ -56,6 +56,7 @@ export async function transcribe(blob: Blob, onProgress: (p: TranscribeProgress)
     w.onmessage = (e) => {
       const m = e.data;
       if (m.type === "progress") onProgress({ stage: m.stage, progress: m.progress });
+      else if (m.type === "chunk") onProgress({ stage: "transcribe", progress: m.progress, text: m.text });
       else if (m.type === "done") res(toCues(m.chunks, duration));
       else if (m.type === "error") rej(new Error(m.message));
     };

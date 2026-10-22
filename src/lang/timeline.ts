@@ -98,6 +98,9 @@ export interface TObj {
   exit?: Trans | undefined;
   /** local bounding box before transform [x, y, w, h] */
   box: [number, number, number, number];
+  /** came from an included map: edited in the map tool, not in the video script */
+  locked?: boolean;
+  from?: string | undefined;
 }
 
 export interface StmtInfo {
@@ -234,6 +237,19 @@ export function worldBox(o: TObj, t: number): [number, number, number, number] {
 }
 
 export const alive = (o: TObj, t: number) => t >= o.start && t < o.end;
+
+/** Script lines of the block that is running at time t: the statements that started together at the latest cursor position. */
+export function activeLinesAt(tl: Timeline, t: number): Set<number> {
+  const lines = new Set<number>();
+  let group: StmtInfo[] = [];
+  for (const s of tl.stmts) {
+    if (s.before > t + 1e-6) break;
+    if (group.length && group[0].before !== s.before) group = [];
+    group.push(s);
+  }
+  for (const s of group) for (let l = s.line; l <= s.endLine; l++) lines.add(l);
+  return lines;
+}
 
 /** Theme overrides as plain values. */
 export function styleValues(tl: Timeline): Record<string, string | number | boolean> {
