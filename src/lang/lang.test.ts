@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { run } from "./interpreter";
-import { sample } from "./timeline";
+import { activeLinesAt, sample } from "./timeline";
 import { insertAtTime, writeMove, writeOver } from "./writeback";
 import { DEMOS } from "@/editor/demos";
 
@@ -111,5 +111,18 @@ d3("voice and subtitles", () => {
     e3(cues.length).toBeGreaterThan(1);
     e3(cues[0].t0).toBe(0);
     e3(cues[cues.length - 1].t1).toBe(10);
+  });
+});
+
+describe("accented names and the active block", () => {
+  it("identifiers may contain accented letters", () => {
+    const r = run('project "Ü"\nshow photo @pillars as Zürich\nzoom Zürich 1.0 to 1.1 over 2s');
+    expect(r.ok, r.ok ? "" : r.error.message).toBe(true);
+  });
+  it("the active block follows the playhead through wait commands", () => {
+    const r = run('project "x"\nsay "a"\nwait 2s\nsay "b"\nwait 1s');
+    if (!r.ok) throw new Error(r.error.message);
+    expect([...activeLinesAt(r.timeline, 0)].sort()).toEqual([0, 1, 2]);
+    expect([...activeLinesAt(r.timeline, 2.5)].sort()).toEqual([3, 4]);
   });
 });

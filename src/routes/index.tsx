@@ -8,7 +8,7 @@ import { VoicePanel } from "@/editor/VoicePanel";
 import { deleteAudio, loadAudio, saveAudio, type AudioItem } from "@/editor/audioStore";
 import { cuesToCode, transcribe } from "@/editor/transcribe";
 import { run } from "@/lang/interpreter";
-import { mapCamAt, styleValues, type Timeline, type TObj } from "@/lang/timeline";
+import { activeLinesAt, mapCamAt, styleValues, type Timeline, type TObj } from "@/lang/timeline";
 import { insertAtTime, removeFx, resetStyle, setStyle, writeFx, writeMove, writeOver, writeProp, writeScale, writeStart, writeGeoMove, writeGeoEnd, writeBend, writeMapCam, writeDelete, writeReverse, writeColor } from "@/lang/writeback";
 import { Library, Inspector } from "@/editor/Library";
 import { applyStyle, getTheme, THEMES } from "@/render/theme";
@@ -261,6 +261,30 @@ function Studio() {
 
   // hand actions: all go through code, and re-run on the next tick (not debounced — see the run effect)
   const hand = (next: string) => { if (next !== hist.codeRef.current) { runImmediate.current = true; hist.setHand(next); } };
+  const loadScript = (code: string) => { setPlaying(false); seek(0); hand(code); };
+  const [mapOpen, setMapOpen] = useState(false);
+  const mapFrame = useRef<HTMLIFrameElement>(null);
+  const addMapToVideo = (mapCode: string) => {
+    if (!mapCode.trim()) return setNotice("The map is empty: add some commands in the map tool first.");
+    setPlaying(false);
+    seek(0);
+    hand(`${hist.codeRef.current.trimEnd()}\n\n# --- Map scene (from the map tool)\nmap 20 10 zoom 2\n${mapCode.trim()}\n`);
+    setMapOpen(false);
+    setNotice("Map added at the end of the video. Press Play to see it.");
+  };
+  const addMapRef = useRef(addMapToVideo);
+  addMapRef.current = addMapToVideo;
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const d = e.data as { type?: unknown; code?: unknown } | null;
+      if (e.origin !== window.location.origin || e.source !== mapFrame.current?.contentWindow) return;
+      if (d?.type !== "pnt-map-script" || typeof d.code !== "string") return;
+      addMapRef.current(d.code);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+  const activeLines = useMemo(() => activeLinesAt(timeline, t), [timeline, t]);
   const onMove = (o: TObj, x: number, y: number) =>
     hand(o.data?.geo || o.kind === "map" ? writeGeoMove(hist.codeRef.current, timeline, o, t, x, y) : writeMove(hist.codeRef.current, timeline, o, t, x, y));
   const onScale = (o: TObj, s: number) =>
@@ -332,6 +356,18 @@ function Studio() {
     <main className="flex h-screen min-h-[640px] flex-col bg-background text-foreground">
       {voice && <audio ref={audioRef} src={voice.url} preload="auto" hidden />}
       {exporting && <ExportDialog timeline={timeline} theme={theme} assets={assets} voice={voice?.blob} onClose={() => setExporting(false)} />}
+      {mapOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-background">
+          <div className="flex h-11 shrink-0 items-center justify-between gap-4 border-b border-border px-4">
+            <div className="flex min-w-0 items-baseline gap-3">
+              <span className="font-display text-lg font-semibold tracking-tight">Map</span>
+              <span className="truncate text-xs text-muted-foreground">A sub-project: build it here, then press Add to video in its toolbar</span>
+            </div>
+            <button onClick={() => setMapOpen(false)} className="shrink-0 rounded-md border border-border bg-secondary px-3 py-1 text-sm text-foreground hover:bg-accent">Back to video</button>
+          </div>
+          <iframe ref={mapFrame} src="/map-tool/index.html" title="Map tool" className="min-h-0 flex-1 border-0" />
+        </div>
+      )}
       <header className="flex h-11 shrink-0 items-center justify-between gap-4 border-b border-border px-4">
         <div className="flex min-w-0 shrink items-baseline gap-3">
           <h1 className="shrink-0 whitespace-nowrap font-display text-lg font-semibold tracking-tight">Paint &amp; Turtle</h1>
@@ -343,7 +379,7 @@ function Studio() {
           <button onClick={hist.redo} title="Redo (Ctrl+Shift+Z)" className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"><Redo2 className="h-4 w-4" /></button>
           <select
             value=""
-            onChange={(e) => { const d = DEMOS.find((x) => x.id === e.target.value); if (d) hand(d.code); }}
+            onChange={(e) => { const d = DEMOS.find((x) => x.id === e.target.value); if (d) loadScript(d.code); }}
             title="Replace the script with an example (undo with Ctrl+Z)"
             className="rounded-md border border-border bg-secondary px-2 py-1 text-foreground"
           >
@@ -366,9 +402,7 @@ function Studio() {
           />
           <button onClick={() => { setPlaying(false); setExporting(true); }} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 font-semibold text-primary-foreground"><Film className="h-3.5 w-3.5" /> Export</button>
           <Link to="/preview" className="text-muted-foreground hover:text-foreground">Scene preview</Link>
-          <a href="/map-tool/index.html" target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground" title="The original interactive map creator (MapLibre) — build a map there, then Open in Studio to bring it here">
-            Classic Map Creator ↗
-          </a>
+          <button onClick={() => { setPlaying(false); setMapOpen(true); }} title="Open the map tool as a sub-project, build a map, then add it to this video" className="rounded-md border border-border bg-secondary px-2.5 py-1 text-foreground hover:bg-accent">+ Map</button>
         </div>
       </header>
 
@@ -401,6 +435,7 @@ function Studio() {
               onRedo={hist.redo}
               error={error}
               selectedLines={selectedLines}
+              activeLines={activeLines}
               onCaretLine={onCaretLine}
               assetNames={media.map((m) => m.name)}
               objectIds={timeline.objects.map((o) => o.id)}

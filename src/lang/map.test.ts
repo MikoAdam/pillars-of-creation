@@ -97,6 +97,10 @@ describe("legacy map commands (colon form)", () => {
     expect(a2.data.head).toBe(2);
     expect(a2.progress.segs[0].t1 - a2.progress.segs[0].t0).toBe(0.5);
   });
+  it("region names with accents resolve", () => {
+    const t = tl("map 51 10 zoom 5\nregion thüringen germany blue");
+    expect(t.objects.find((o) => o.kind === "map")!.data.fills.length).toBe(1);
+  });
   it("accepts CSS colour names as well as the map palette", () => {
     const t = tl("map 45 15 zoom 4\ncountry poland skyblue\nattack: poland, belarus, goldenrod");
     expect(t.objects.find((o) => o.kind === "attack")!.data.color).toBe("goldenrod");
