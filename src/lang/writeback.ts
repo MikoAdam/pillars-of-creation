@@ -255,3 +255,34 @@ export function writeMapPan(code: string, tl: Timeline, m: TObj, T: number, dx: 
   const [lng, lat] = pr.unproject(960 - dx, 540 - dy);
   return writeMapCam(code, tl, m, T, "pos", [lat, lng]);
 }
+
+/** Delete an object: remove every source line that created or later touched it. */
+export function writeDelete(code: string, o: TObj): string {
+  const remove = new Set(o.lines);
+  remove.add(o.createLine);
+  return code.split("\n").filter((_, i) => !remove.has(i)).join("\n");
+}
+
+function endSpan(e: { spans: (Span | undefined)[]; nameSpan?: Span }): Span | undefined {
+  if (e.nameSpan) return e.nameSpan;
+  const [s0, s1] = e.spans;
+  if (s0 && s1) return [Math.min(s0[0], s1[0]), Math.max(s0[1], s1[1])];
+  return undefined;
+}
+
+/** Swap an attack/route's start and end point by exchanging their source text. */
+export function writeReverse(code: string, o: TObj): string {
+  const ends = o.data.ends as { a: { spans: (Span | undefined)[]; nameSpan?: Span }; b: { spans: (Span | undefined)[]; nameSpan?: Span } } | undefined;
+  if (!ends) return code;
+  const sa = endSpan(ends.a), sb = endSpan(ends.b);
+  if (!sa || !sb) return code;
+  const ta = code.slice(sa[0], sa[1]), tb = code.slice(sb[0], sb[1]);
+  return applyEdits(code, [{ span: sa, text: tb }, { span: sb, text: ta }]);
+}
+
+/** Recolour a map marker or arrow: edit its colour literal, or append one if it never had one. */
+export function writeColor(code: string, o: TObj, value: string): string {
+  const sp = o.data.colorSpan as Span | undefined;
+  if (sp) return applyEdits(code, [{ span: sp, text: value }]);
+  return appendToCreate(code, o, ` ${value}`);
+}

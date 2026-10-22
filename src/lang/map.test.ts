@@ -97,6 +97,15 @@ describe("legacy map commands (colon form)", () => {
     expect(a2.data.head).toBe(2);
     expect(a2.progress.segs[0].t1 - a2.progress.segs[0].t0).toBe(0.5);
   });
+  it("accepts CSS colour names as well as the map palette", () => {
+    const t = tl("map 45 15 zoom 4\ncountry poland skyblue\nattack: poland, belarus, goldenrod");
+    expect(t.objects.find((o) => o.kind === "attack")!.data.color).toBe("goldenrod");
+    const t2 = tl("map 45 15 zoom 4\ncountry poland Blue");
+    expect(t2.objects.length).toBeGreaterThan(0);
+    const r = run("map 45 15 zoom 4\ncountry poland notacolour");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.message).toContain("notacolour");
+  });
   it("line between two countries makes a straight dashed route", () => {
     const t = tl("map 45 15 zoom 4\nline: germany, poland");
     const r = t.objects.find((o) => o.kind === "route")!;
@@ -109,10 +118,12 @@ describe("legacy map commands (colon form)", () => {
     expect(b.pos.base[0]).toBe(960);
     expect(b.pos.base[1]).toBe(1067);
   });
-  it("label becomes a pointer tag and year becomes a top-left pill", () => {
+  it("label is a plain text label (no pointer) and year becomes a top-left pill", () => {
+    // the original's label: is LabelFactory.createLabel (plain text) — createArrow
+    // (the pointer-shaped one) is a separate command, arrow:
     const t = tl('map 45 15 zoom 4\nlabel: 52 13, "Checkpoint Charlie"\nyear: 1989');
-    const tag = t.objects.find((o) => o.kind === "tag")!;
-    expect(tag.data.dir).toBe("right");
+    const label = t.objects.find((o) => o.kind === "label")!;
+    expect(label.data.text).toBe("Checkpoint Charlie");
     const y = t.objects.find((o) => o.kind === "year")!;
     expect(y.data.text).toBe("1989");
     expect(y.pos.base[0]).toBe(32);

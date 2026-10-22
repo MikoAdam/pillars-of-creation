@@ -1,7 +1,7 @@
 import { LangError } from "./lexer";
 import { FONT_CHOICES } from "@/render/theme";
 import { parse, type Arg, type Expr, type Span, type Stmt } from "./parser";
-import { MAP_COLORS, MAP_COLOR_NAMES, findCountry, findRegion, fitBbox, geoReady, normName, suggest, territoriesOf, type GeoFeature } from "@/render/geo";
+import { CSS_COLOR_NAMES, MAP_COLORS, MAP_COLOR_NAMES, findCountry, findRegion, fitBbox, geoReady, normName, suggest, territoriesOf, type GeoFeature } from "@/render/geo";
 import { EFFECTS, type EffectName } from "@/render/effectsSymbols";
 import { SYMBOLS, type SymbolName } from "@/render/symbols";
 import type { MapFill } from "@/render/scenes/map";
@@ -626,8 +626,12 @@ export function interpret(src: string): Timeline {
     if (!a) { if (fallback) return fallback; err(`Expected a colour (${MAP_COLOR_NAMES.slice(0, 8).join(", ")}…)`, nearOf(s)); }
     if (a!.kind === "str" && /^#[0-9a-f]{6}$/i.test(a!.v)) return a!.v;
     if (a!.kind === "word" && /^#[0-9a-f]{3}$|^#[0-9a-f]{6}$/i.test(a!.name)) return a!.name;
-    if (a!.kind === "word" && MAP_COLORS[a!.name]) return MAP_COLORS[a!.name];
-    return err(`Unknown colour. Use ${MAP_COLOR_NAMES.join(", ")} or "#rrggbb"`, a!);
+    if (a!.kind === "word") {
+      const name = a!.name.toLowerCase();
+      if (MAP_COLORS[name]) return MAP_COLORS[name];
+      if (CSS_COLOR_NAMES.has(name)) return name;
+    }
+    return err(`Unknown colour "${a!.kind === "word" ? a!.name : a!.kind === "str" ? a!.v : ""}". Use ${MAP_COLOR_NAMES.join(", ")}, a CSS colour name such as goldenrod, or "#rrggbb"`, a!);
   }
 
   /** A place: "lat lng" numbers or a country name. Returns [lng, lat] and how many args it used. */
@@ -832,19 +836,33 @@ export function interpret(src: string): Timeline {
           } else {
             const pl = place(A, ai, s); bLL = pl.ll; bSpans = pl.spans; bName = pl.nameSpan; ai += pl.used;
           }
+          // curve/width/head are also keywords in the generic KW table (so "over", "as" etc.
+          // keep working on attacks), which means split() already pulled any `curve N` /
+          // `width N` / `head N` pairs out of the positional stream into p.kw before we get
+          // here — read them the same way, and only re-scan A for the bare positional form.
           let curve = kw1(p, "curve") ? num(kw1(p, "curve")![1], "curve", kw1(p, "curve")![0]).v : 0.15;
-          let width = 1, head = NaN, dur = 0.8, slot = 0;
+          let width = kw1(p, "width") ? num(kw1(p, "width")![1], "width", kw1(p, "width")![0]).v : 1;
+          let head = kw1(p, "head") ? num(kw1(p, "head")![1], "head", kw1(p, "head")![0]).v : NaN;
+          let dur = 0.8, slot = 0;
           let col = MAP_COLORS["red"];
-          const FIELD = ["curve", "width", "head", "dur", "anim"];
+          let colorSpan: Span | undefined;
+          const FIELD = ["curve", "width", "head", "dur", "anim", "color"];
           const colArg = A[ai];
-          if (colArg && (colArg.kind === "word" || colArg.kind === "str") && !(colArg.kind === "word" && FIELD.includes(colArg.name))) { col = color(colArg, s); ai++; }
+          if (colArg && (colArg.kind === "word" || colArg.kind === "str") && !(colArg.kind === "word" && FIELD.includes(colArg.name))) { col = color(colArg, s); colorSpan = [colArg.tok.start, colArg.tok.end]; ai++; }
           while (ai < A.length) {
             const a2 = A[ai];
             if (a2.kind === "word" && FIELD.includes(a2.name)) {
               if (a2.name === "curve") { curve = num(A[ai + 1], "curve", a2).v; slot = 1; }
               else if (a2.name === "width") { width = num(A[ai + 1], "width", a2).v; slot = 2; }
               else if (a2.name === "head") { head = num(A[ai + 1], "head", a2).v; }
-              else if (a2.name === "dur") { dur = num(A[ai + 1], "duration", a2).v; }
+              else if (a2.name === "dur") {
+                // "dur MS" is documented in milliseconds; an explicit unit suffix (500ms, 2s)
+                // is already in seconds by the time the lexer hands it to us.
+                const durArg = A[ai + 1];
+                const dn = num(durArg, "duration", a2);
+                dur = durArg?.kind === "num" && durArg.isDur ? dn.v : dn.v / 1000;
+              }
+              else if (a2.name === "color") { const cArg = A[ai + 1]; col = color(cArg, s); colorSpan = cArg ? [cArg.tok.start, cArg.tok.end] : undefined; }
               ai += 2;
             } else if (a2.kind === "num" || a2.kind === "expr") {
               const v = num(a2, "a number", near).v;
@@ -859,11 +877,13 @@ export function interpret(src: string): Timeline {
           p.kw["over"] = [[{ kind: "word", name: "over", tok: s.nameTok }, { kind: "num", v: Math.max(0.05, dur), isDur: true, tok: s.nameTok }]];
           const o = geoObj("attack", p, s, start, { a: aLL, b: bLL, color: col, bend: curve, width, head });
           o.data.ends = { a: { spans: aSpans, nameSpan: aName }, b: { spans: bSpans, nameSpan: bName } };
+          if (colorSpan) o.data.colorSpan = colorSpan;
           return true;
         }
         const a = place(A, 0, s);
         const b = place(A, a.used, s);
-        const col = color(A[a.used + b.used], s, s.name === "route" ? MAP_COLORS["blue"] : MAP_COLORS["red"]);
+        const colorArg = A[a.used + b.used];
+        const col = color(colorArg, s, s.name === "route" ? MAP_COLORS["blue"] : MAP_COLORS["red"]);
         const g = (k: string, def: number) => (kw1(p, k) ? num(kw1(p, k)![1], k, kw1(p, k)![0]) : { v: def });
         const bend = g("bend", 0.18), width = g("width", 1), head = g("head", 1);
         if (!kw1(p, "over")) p.kw["over"] = [[{ kind: "word", name: "over", tok: s.nameTok }, { kind: "num", v: s.name === "attack" ? 1.2 : 1, isDur: true, tok: s.nameTok }]];
@@ -871,6 +891,7 @@ export function interpret(src: string): Timeline {
         o.progress.segs[0].overSpan = kw1(p, "over")![1].tok === s.nameTok ? undefined : o.progress.segs[0].overSpan;
         o.data.ends = { a: { spans: a.spans, nameSpan: a.nameSpan }, b: { spans: b.spans, nameSpan: b.nameSpan } };
         o.data.bendSpan = bend.span;
+        if (colorArg) o.data.colorSpan = [colorArg.tok.start, colorArg.tok.end];
         return true;
       }
       case "pin":
@@ -880,46 +901,54 @@ export function interpret(src: string): Timeline {
         // subtitle-style bubble: no coordinates — fixed to the bottom-centre of the frame
         const sub = s.name === "bubble" && (s.legacy || !A[0] || A[0].kind === "str");
         if (sub) {
+          const colorArg = A[1];
           const text = str(A[0], "bubble text", near);
-          const col = A[1] ? color(A[1], s) : "#4cd964";
+          const col = colorArg ? color(colorArg, s) : "#4cd964";
           const lay = measureSubtitle(text);
           const o = geoObj("bubble", p, s, start, { text, color: col, subtitle: true, rel: [-lay.w / 2, -lay.h, lay.w, lay.h] });
           o.origin = [W / 2, H - 13];
           o.pos.base = [W / 2, H - 13];
           o.box = [W / 2 - lay.w / 2, H - 13 - lay.h, lay.w, lay.h];
+          if (colorArg) o.data.colorSpan = [colorArg.tok.start, colorArg.tok.end];
           return true;
         }
         const lat = num(A[0], "latitude", near), lng = num(A[1], "longitude", A[0] ?? near);
         let data: any = { lat: lat.v, lng: lng.v };
         let rel: number[];
+        let colorArg: Arg | undefined;
         if (s.name === "pin") {
           const sym = word(A[2], `a symbol (${SYMBOLS.join(", ")})`, A[1] ?? near) as SymbolName;
           if (!SYMBOLS.includes(sym)) err(`Unknown symbol "${sym}". Use ${SYMBOLS.join(", ")}`, A[2]);
           const size = kw1(p, "size") ? num(kw1(p, "size")![1], "size", kw1(p, "size")![0]).v : 1;
-          data = { ...data, symbol: sym, color: color(A[3], s, MAP_COLORS["red"]), size };
+          colorArg = A[3];
+          data = { ...data, symbol: sym, color: color(colorArg, s, MAP_COLORS["red"]), size };
           const r = 30 * size;
           rel = [-r, -r, 2 * r, 2 * r];
         } else if (s.name === "bubble") {
           const text = str(A[2], "bubble text", A[1] ?? near);
-          data = { ...data, text, color: color(A[3], s, "#4cd964") };
+          colorArg = A[3];
+          data = { ...data, text, color: color(colorArg, s, "#4cd964") };
           const lay = measureBubble(text);
           rel = [-lay.w / 2, -lay.h - 13, lay.w, lay.h + 13];
         } else if (s.name === "label") {
           const text = str(A[2], "label text", A[1] ?? near);
           const size = kw1(p, "size") ? num(kw1(p, "size")![1], "size", kw1(p, "size")![0]).v : s.legacy ? 14 : 18;
-          data = { ...data, text, size, color: color(A[3], s, s.legacy ? "#ffffff" : "#0f172a") };
+          colorArg = A[3];
+          data = { ...data, text, size, color: color(colorArg, s, s.legacy ? "#ffffff" : "#0f172a") };
           const w = text.length * size * 1.15 + 20;
           rel = [-w / 2, -size * 1.3, w, size * 2.6];
         } else {
           const text = str(A[2], "tag text", A[1] ?? near);
           const dir = A[3] ? word(A[3], "left or right", A[2]) : "right";
           if (dir !== "left" && dir !== "right") err("Use left or right", A[3]);
-          data = { ...data, text, dir, color: color(A[4], s, s.legacy ? "#ffffff" : MAP_COLORS["red"]) };
+          colorArg = A[4];
+          data = { ...data, text, dir, color: color(colorArg, s, s.legacy ? "#ffffff" : MAP_COLORS["red"]) };
           const cw = Math.min(426, text.length * 10 + 48), ch = 60;
           rel = dir === "right" ? [0, -ch / 2, 80 + cw, ch] : [-80 - cw, -ch / 2, 80 + cw, ch];
         }
         const o = geoObj(s.name as ObjKind, p, s, start, { ...data, rel });
         o.createSpans.at = [lat.span, lng.span];
+        if (colorArg) o.data.colorSpan = [colorArg.tok.start, colorArg.tok.end];
         return true;
       }
       case "year": {
@@ -986,6 +1015,7 @@ export function interpret(src: string): Timeline {
         const r = 32 * size;
         const o = geoObj("effect", p, s, start, { lat: lat.v, lng: lng.v, symbol: sym, color: col, size, rel: [-r, -r, 2 * r, 2 * r] });
         o.createSpans.at = [lat.span, lng.span];
+        if (A[3]) o.data.colorSpan = [A[3].tok.start, A[3].tok.end];
         return true;
       }
       case "cinematic": {

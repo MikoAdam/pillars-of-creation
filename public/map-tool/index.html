@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pillars of Creation Maps</title>
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="apple-touch-icon" href="icon.png">
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+    <link rel="stylesheet" href="css/styles.css?v=10">
+</head>
+<body>
+
+<!-- Welcome Modal -->
+<div class="welcome-modal hidden" id="welcomeModal">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+        <div class="modal-icon">
+            <img src="icon.png" alt="Pillars of Creation Maps" style="width: 180px; height: 180px; border-radius: 24px; box-shadow: 0 12px 40px rgba(102, 126, 234, 0.4);">
+        </div>
+        <h1>Pillars of Creation</h1>
+        <p class="modal-subtitle">Maps</p>
+        <p class="modal-tagline">Create animated historical maps with simple scripts</p>
+        <div class="instruction-grid">
+            <div class="instruction-item">
+                <div class="instruction-number">1</div>
+                <div class="instruction-text">
+                    <strong>Right-click the map</strong> to color countries and add labels
+                </div>
+            </div>
+            <div class="instruction-item">
+                <div class="instruction-number">2</div>
+                <div class="instruction-text">
+                    <strong>Write commands</strong> in the editor: <code>germany: blue</code>
+                </div>
+            </div>
+            <div class="instruction-item">
+                <div class="instruction-number">3</div>
+                <div class="instruction-text">
+                    <strong>Press Run</strong> to animate your map story
+                </div>
+            </div>
+            <div class="instruction-item">
+                <div class="instruction-number">4</div>
+                <div class="instruction-text">
+                    <strong>Screenshot or record</strong> to export your creation
+                </div>
+            </div>
+        </div>
+        <button class="modal-button" onclick="app.dismissWelcome()">Get Started</button>
+    </div>
+</div>
+
+<header>
+    <div class="logo">
+        <img src="icon.png" alt="Pillars of Creation Maps" class="logo-icon">
+        <span>Pillars of Creation Maps</span>
+    </div>
+    <div class="header-controls">
+        <select id="styleSelect">
+            <option value="minimal" selected>Minimal</option>
+            <option value="liberty">Liberty</option>
+            <option value="satellite">Satellite</option>
+        </select>
+        <label class="checkbox-label satellite-only" style="display:flex">
+            <input type="checkbox" id="showBorders" checked> Borders
+        </label>
+        <label class="checkbox-label satellite-only" style="display:flex">
+            <input type="checkbox" id="showLabels" checked> Labels
+        </label>
+        <label class="checkbox-label" style="display:flex;align-items:center;gap:5px">
+            Ratio <input type="text" id="aspectRatio" value="16:9" placeholder="free"
+                style="width:46px;background:rgba(255,255,255,0.06);border:1px solid #3a3a50;color:#fff;padding:3px 5px;border-radius:4px;font-size:11px;font-family:inherit">
+        </label>
+        <button onclick="app.clearAll()">Clear Map</button>
+        <button onclick="app.toggleFullscreen()">Fullscreen</button>
+        <button onclick="app.takeScreenshot()">Screenshot</button>
+        <button onclick="app.stopVideoRecording()" id="stopRecordBtn" class="stop-rec-header" style="display:none" title="Stop recording and save video">⏹ Stop Recording</button>
+        <button id="sendToStudioBtn" title="Open this script in the Pillars of Creation video studio">Open in Studio &#8594;</button>
+    </div>
+</header>
+
+<main>
+    <aside class="sidebar">
+        <div class="toolbar">
+            <button onclick="app.insertCommand('wait: 1s')" title="Add delay">Wait</button>
+            <button onclick="app.insertCommand('fly: 50, 10, 4')" title="Fly to location">Fly</button>
+            <button onclick="app.insertCommand('zoom: Germany')" title="Zoom to country">Zoom</button>
+            <div class="toolbar-divider"></div>
+            <button onclick="app.insertCommand('bubble: 50, 10, &quot;Text&quot;, blue')" title="Add text bubble">Bubble</button>
+            <button onclick="app.insertCommand('year: &quot;2024&quot;')" title="Add year badge">Year</button>
+            <button onclick="app.insertCommand('arrow: 50, 10, &quot;Label&quot;, right')" title="Add arrow label">Arrow</button>
+            <div class="toolbar-divider"></div>
+            <button onclick="app.insertCommand('legend: &quot;Label&quot;, blue')" title="Add legend entry">Legend</button>
+            <button onclick="app.insertCommand('remove: last')" title="Remove last label">Remove</button>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="editor">Editor</button>
+            <button class="tab" data-tab="examples">Examples</button>
+            <button class="tab" data-tab="help">Help</button>
+        </div>
+
+        <div class="tab-content active" id="tab-editor">
+            <textarea class="editor" id="editor" placeholder="# Right-click on map to add countries
+# Use toolbar to insert commands
+
+germany: blue
+france: green
+
+bubble: 52, 13, &quot;Berlin&quot;, blue
+wait: 2s
+zoom: Germany"></textarea>
+        </div>
+
+        <div class="tab-content" id="tab-examples">
+            <div class="examples-list" id="examplesList"></div>
+        </div>
+
+        <div class="tab-content" id="tab-help">
+            <div class="help-content">
+                <h3>Coloring Countries</h3>
+                <p><code>country name: color</code></p>
+                <p>Example: <code>germany: blue</code></p>
+                <p>With animation: <code>germany: blue, pulse</code></p>
+                <p>Animations: <code>pulse</code>, <code>fade</code>, <code>radial</code>, <code>sweep</code>, <code>none</code></p>
+
+                <h3>Coloring Regions</h3>
+                <p><code>region: Name, Country, color</code></p>
+                <p>Occupied: <code>region: Name, Country, color, occupied</code></p>
+
+                <h3>Attack Arrows</h3>
+                <p><code>attack: from lat lng, to lat lng, color name</code></p>
+                <p>Full: <code>attack: from 52.50 13.40, to 48.85 2.35, color red, curve 0.15, width 1.00, head 1.00, dur 800</code></p>
+                <p>Country names: <code>attack: from Germany, to France, color red</code></p>
+                <p>Legacy: <code>attack: Germany, France, red, 0.15, 1, 1</code></p>
+
+                <h3>Connection Lines</h3>
+                <p><code>line: Germany, France, blue</code></p>
+                <p>Coordinates: <code>line: 52.5 13.4, 48.8 2.3, blue</code></p>
+
+                <h3>Map Symbols</h3>
+                <p><code>effect: lat, lng, name, color</code></p>
+                <p>With size: <code>effect: 52.5, 13.4, tank, green, 1.5</code></p>
+                <p>Combat: <code>explosion</code>, <code>battle</code>, <code>bombing</code>, <code>fire</code>, <code>skull</code>, <code>nuke</code></p>
+                <p>Military: <code>tank</code>, <code>plane</code>, <code>naval</code></p>
+                <p>Resources: <code>oil</code>, <code>factory</code>, <code>port</code></p>
+                <p>Political: <code>flag</code>, <code>capital</code>, <code>shield</code>, <code>treaty</code>, <code>uprising</code>, <code>occupation</code></p>
+
+                <h3>Text &amp; Labels</h3>
+                <p>Bubble: <code>bubble: lat, lng, "text", color</code></p>
+                <p>Arrow label: <code>arrow: lat, lng, "text", right</code></p>
+                <p>Text label: <code>label: lat, lng, "text", 18, white</code></p>
+                <p>Year badge: <code>year: "1939", highlight</code></p>
+
+                <h3>Legend</h3>
+                <p><code>legend: "NATO Members", blue</code></p>
+                <p><code>legend: auto</code> &mdash; auto-generate from script</p>
+                <p><code>legend: hide</code> &mdash; hide legend</p>
+
+                <h3>Camera</h3>
+                <p><code>fly: lat, lng, zoom</code></p>
+                <p><code>cinematic: lat, lng, zoom, pitch, bearing</code></p>
+                <p><code>zoom: Germany</code></p>
+                <p><code>wait: 2s</code> or <code>wait: 500ms</code></p>
+
+                <h3>Cleanup</h3>
+                <p><code>remove: last</code> &mdash; remove last marker</p>
+                <p><code>remove: arrows</code> &mdash; remove all attack arrows</p>
+                <p><code>remove: effects</code> &mdash; remove all map symbols</p>
+
+                <h3>Controls</h3>
+                <p><strong>Right-click</strong> &mdash; Open context menu (drag header to move it)</p>
+                <p><strong>Middle mouse drag</strong> &mdash; Tilt and rotate the map</p>
+                <p><strong>Click arrow/symbol</strong> &mdash; Select for editing</p>
+                <p><strong>Drag any marker</strong> &mdash; Reposition bubbles, labels, symbols</p>
+                <p><strong>Delete</strong> &mdash; Remove selected arrow or symbol</p>
+                <p><strong>Escape</strong> &mdash; Deselect or cancel current flow</p>
+
+                <h3>Tips</h3>
+                <p>Symbols use professional military-grade iconography</p>
+                <p>Click an arrow to select, then drag green/red/yellow handles to reshape</p>
+                <p>All placed markers (bubbles, symbols, labels) are draggable on the map</p>
+                <p>Country coloring persists when switching between Liberty and Satellite</p>
+                <p>Invalid color names are caught and warnings shown in the editor</p>
+                <p>Use DVD controls to step through animations frame by frame</p>
+                <p>Screenshots include all layers: arrows, labels, symbols, year badge, and legend</p>
+            </div>
+        </div>
+
+        <!-- ANIMATION CONTROLS -->
+        <div class="animation-controls-permanent">
+            <div class="timeline-container" id="timelineContainer">
+                <div class="timeline-header">
+                    <span class="timeline-title">Progress</span>
+                    <span class="timeline-position" id="timelinePosition">0 / 0</span>
+                </div>
+                <div class="timeline-bar" id="timelineBar" title="Click to seek to any step">
+                    <div class="timeline-progress" id="timelineProgress"></div>
+                </div>
+            </div>
+
+            <div class="control-row">
+                <button class="ctrl-btn" id="runBtn" onclick="app.run()" title="Run animation">▶ Run</button>
+                <button class="ctrl-btn ctrl-btn-rec" id="recordPlayBtn" onclick="app.recordAndPlay()" title="Restart and record the whole animation to a video file">⏺ Rec</button>
+            </div>
+
+            <div class="control-row dvd-controls" id="dvdControls" style="display: none;">
+                <button class="ctrl-btn small" id="prevBtn" onclick="app.stepBackward()" title="Previous step">Prev</button>
+                <button class="ctrl-btn small stop" id="stopBtn" onclick="app.stop()" title="Stop">Stop</button>
+                <button class="ctrl-btn small" id="playBtn" onclick="app.run()" title="Continue">Play</button>
+                <button class="ctrl-btn small" id="nextBtn" onclick="app.stepForward()" title="Next step">Next</button>
+            </div>
+
+            <div class="control-row dvd-controls" id="dvdControls2" style="display: none;">
+                <button class="ctrl-btn small secondary" onclick="app.restart()" title="Restart from beginning">Restart</button>
+            </div>
+
+            <div class="control-row speed-row">
+                <span class="speed-label">Speed</span>
+                <div class="speed-btns" id="speedBtns">
+                    <button class="speed-btn" data-speed="0.25" onclick="app.setSpeed(0.25)">¼×</button>
+                    <button class="speed-btn" data-speed="0.5" onclick="app.setSpeed(0.5)">½×</button>
+                    <button class="speed-btn active" data-speed="1" onclick="app.setSpeed(1)">1×</button>
+                    <button class="speed-btn" data-speed="2" onclick="app.setSpeed(2)">2×</button>
+                    <button class="speed-btn" data-speed="4" onclick="app.setSpeed(4)">4×</button>
+                </div>
+            </div>
+        </div>
+        <div class="sidebar-resizer" id="sidebarResizer"></div>
+    </aside>
+
+    <div class="map-container">
+        <div id="map"></div>
+        <div class="map-year-overlay" id="yearOverlay"></div>
+        <div class="attack-indicator" id="attackIndicator" style="display:none">
+            &#10140; Arrow from: <strong class="attack-from-name"></strong> — right-click target
+            <button class="attack-cancel-btn" onclick="app.menu.cancelFlow()" title="Cancel (Esc)">&#10005;</button>
+        </div>
+        <div class="map-attribution" id="attribution">
+            <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> ·
+            <a href="https://naturalearthdata.com" target="_blank">Natural Earth</a>
+        </div>
+
+<!-- Context Menu (inside map-container so it works in fullscreen) -->
+<div class="context-menu" id="contextMenu">
+    <!-- Header -->
+    <div class="context-menu-header" id="menuTitle">Select</div>
+
+    <!-- Color Palette -->
+    <div class="color-palette" id="colorPalette"></div>
+
+    <!-- Animation Pills (hidden for ocean clicks) -->
+    <div class="ctx-section-anim">
+        <div class="context-menu-section">Animation</div>
+        <div class="anim-pills" id="animPills">
+            <button class="anim-pill selected" data-anim="pulse">pulse</button>
+            <button class="anim-pill" data-anim="fade">fade</button>
+            <button class="anim-pill" data-anim="radial">radial</button>
+            <button class="anim-pill" data-anim="sweep">sweep</button>
+            <button class="anim-pill" data-anim="occupied" title="Occupied / diagonal stripes">&#47;&#47;&#47;</button>
+        </div>
+    </div>
+
+    <div class="context-menu-divider"></div>
+
+    <!-- ═══ NORMAL MODE ═══ -->
+    <div class="ctx-section-normal">
+
+        <!-- Territory — Country is the default action; Region shows additionally when available -->
+        <div class="context-menu-item ctx-default-action ctx-needs-feature" id="menuColorCountry" data-action="addCountry">
+            <span class="icon">&#9632;</span>
+            <span id="countryLabel">Color country</span>
+            <span class="ctx-shortcut">Enter</span>
+        </div>
+        <div class="context-menu-item" id="menuColorRegion" data-action="addRegion" style="display:none">
+            <span class="icon">&#9638;</span>
+            <span id="regionLabel">Color region</span>
+        </div>
+
+        <div class="context-menu-divider"></div>
+
+        <!-- Arrows & Lines -->
+        <div class="context-menu-item" data-action="startAttackArrow">
+            <span class="icon">&#10140;</span> Attack arrow from here
+            <span class="ctx-shortcut">A</span>
+            <span class="ctx-more-btn" data-panel="arrowOpts">&#9662;</span>
+        </div>
+        <div class="ctx-options" id="arrowOpts">
+            <div class="ctx-opt-label">Draw duration (ms)</div>
+            <div class="ctx-range-row">
+                <input type="range" class="ctx-range" id="arrowDurationRange" min="200" max="3000" step="100" value="800">
+                <span class="ctx-range-value">800</span>
+            </div>
+        </div>
+
+        <div class="context-menu-item" data-action="startLine">
+            <span class="icon">&mdash;</span> Connection line from here
+            <span class="ctx-shortcut">L</span>
+        </div>
+
+        <div class="context-menu-divider"></div>
+
+        <!-- Annotations -->
+        <div class="context-menu-item" data-action="addBubble">
+            <span class="icon">T</span> Text bubble
+            <span class="ctx-shortcut">B</span>
+            <span class="ctx-more-btn" data-panel="bubbleOpts">&#9662;</span>
+        </div>
+        <div class="ctx-options" id="bubbleOpts">
+            <input class="ctx-inline-input" id="bubbleTextInput" placeholder="Bubble text..." maxlength="120">
+            <div class="ctx-opt-actions">
+                <button class="ctx-opt-btn confirm" data-action="addBubble">Add bubble</button>
+            </div>
+        </div>
+
+        <div class="context-menu-item" data-action="addArrowLabel">
+            <span class="icon">&#10148;</span> Arrow label
+            <span class="ctx-more-btn" data-panel="arrowLabelOpts">&#9662;</span>
+        </div>
+        <div class="ctx-options" id="arrowLabelOpts">
+            <input class="ctx-inline-input" id="arrowLabelTextInput" placeholder="Label text..." maxlength="80">
+            <div class="ctx-radio-group" id="arrowLabelDirGroup">
+                <button class="ctx-radio-pill selected" data-value="right">right &#8594;</button>
+                <button class="ctx-radio-pill" data-value="left">&#8592; left</button>
+            </div>
+            <div class="ctx-opt-actions">
+                <button class="ctx-opt-btn confirm" data-action="addArrowLabel">Add label</button>
+            </div>
+        </div>
+
+        <div class="context-menu-item" data-action="addLabel">
+            <span class="icon">Aa</span> Text label
+            <span class="ctx-more-btn" data-panel="labelOpts">&#9662;</span>
+        </div>
+        <div class="ctx-options" id="labelOpts">
+            <input class="ctx-inline-input" id="labelTextInput" placeholder="Label text..." maxlength="60">
+            <div class="ctx-opt-label">Size</div>
+            <div class="ctx-range-row">
+                <input type="range" class="ctx-range" id="labelSizeRange" min="10" max="28" step="1" value="14">
+                <span class="ctx-range-value">14</span>
+            </div>
+            <div class="ctx-opt-actions">
+                <button class="ctx-opt-btn confirm" data-action="addLabel">Add label</button>
+            </div>
+        </div>
+
+        <div class="context-menu-divider"></div>
+
+        <!-- Camera (compact row) -->
+        <div class="ctx-compact-row">
+            <div class="context-menu-item ctx-compact" data-action="addFly">
+                <span class="icon">&#8594;</span> Fly here
+                <span class="ctx-shortcut">F</span>
+            </div>
+            <div class="context-menu-item ctx-compact" data-action="addCinematic">
+                <span class="icon">&#127910;</span> Cinematic
+                <span class="ctx-shortcut">C</span>
+            </div>
+        </div>
+        <div class="context-menu-item ctx-needs-feature ctx-compact" data-action="addZoom">
+            <span class="icon">&#128269;</span> Zoom to country
+            <span class="ctx-shortcut">Z</span>
+        </div>
+
+        <div class="context-menu-divider"></div>
+
+        <!-- Symbols -->
+        <div class="context-menu-section" style="display:flex;align-items:center;justify-content:space-between">
+            Symbols <span style="color:#555;font-weight:400;font-size:8px">(click to place)</span>
+            <span class="ctx-more-btn" data-panel="effectsOpts" style="width:auto;padding:1px 6px;font-size:9px;gap:3px">Size &#9662;</span>
+        </div>
+        <div class="ctx-options" id="effectsOpts">
+            <div class="ctx-opt-label">Symbol size</div>
+            <div class="ctx-range-row">
+                <input type="range" class="ctx-range" id="effectSizeRange" min="0.5" max="3" step="0.25" value="1.5">
+                <span class="ctx-range-value">1.50</span>
+            </div>
+        </div>
+        <div class="fx-inline-picker" id="effectPicker"></div>
+
+        <!-- Year & Legend (compact) -->
+        <div class="context-menu-item" data-action="addYear">
+            <span class="icon">#</span> Year badge
+            <span class="ctx-more-btn" data-panel="yearOpts">&#9662;</span>
+        </div>
+        <div class="ctx-options" id="yearOpts">
+            <input class="ctx-inline-input" id="yearTextInput" placeholder="e.g. 1949" maxlength="20">
+            <label class="ctx-inline-checkbox"><input type="checkbox" id="yearHighlight"> Highlight</label>
+            <div class="ctx-opt-actions">
+                <button class="ctx-opt-btn confirm" data-action="addYear">Set year</button>
+            </div>
+        </div>
+
+        <div class="context-menu-item" data-action="addLegend">
+            <span class="icon">&#9632;</span> Legend entry
+            <span class="ctx-more-btn" data-panel="legendOpts">&#9662;</span>
+        </div>
+        <div class="ctx-options" id="legendOpts">
+            <input class="ctx-inline-input" id="legendTextInput" placeholder="e.g. NATO Members" maxlength="40">
+            <div class="ctx-opt-actions">
+                <button class="ctx-opt-btn confirm" data-action="addLegend">Add to legend</button>
+            </div>
+        </div>
+
+        <div class="context-menu-divider"></div>
+
+        <!-- Timing & Cleanup -->
+        <div class="ctx-compact-row">
+            <div class="context-menu-item ctx-compact" data-action="addWait1">
+                <span class="icon">&#9202;</span> Wait 1s
+            </div>
+            <div class="context-menu-item ctx-compact" data-action="addWait2">
+                <span class="icon">&#9202;</span> Wait 2s
+            </div>
+        </div>
+        <div class="ctx-compact-row">
+            <div class="context-menu-item ctx-compact" data-action="removeLast">
+                <span class="icon">&#9003;</span> Undo last
+            </div>
+            <div class="context-menu-item ctx-compact" data-action="removeArrows">
+                <span class="icon">&#10005;</span> Clear arrows
+            </div>
+        </div>
+        <div class="ctx-compact-row">
+            <div class="context-menu-item ctx-compact" data-action="removeEffects">
+                <span class="icon">&#10005;</span> Clear symbols
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ═══ ARROW EDIT MODE ═══ -->
+    <div class="ctx-section-arrow-edit" style="display:none">
+        <div class="ctx-options open" style="display:block">
+            <div class="ctx-opt-label">Width</div>
+            <div class="ctx-range-row">
+                <input type="range" class="ctx-range" id="editArrowWidth" min="0.5" max="3" step="0.25" value="1">
+                <span class="ctx-range-value">1.00</span>
+            </div>
+            <div class="ctx-opt-label">Head size</div>
+            <div class="ctx-range-row">
+                <input type="range" class="ctx-range" id="editArrowHeadSize" min="0.5" max="3" step="0.25" value="1">
+                <span class="ctx-range-value">1.00</span>
+            </div>
+            <div class="ctx-opt-label">Draw duration (ms)</div>
+            <div class="ctx-range-row">
+                <input type="range" class="ctx-range" id="editArrowDuration" min="200" max="3000" step="100" value="800">
+                <span class="ctx-range-value">800</span>
+            </div>
+        </div>
+
+        <div class="context-menu-item" data-action="reverseArrow">
+            <span class="icon">&#8644;</span> Reverse direction
+        </div>
+        <div class="context-menu-item context-menu-item-subtle" data-action="deleteArrow">
+            <span class="icon">&#128465;</span> Delete arrow
+            <span class="ctx-shortcut">Del</span>
+        </div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item ctx-done-btn" data-action="close">
+            <span class="icon">&#10003;</span> Done
+        </div>
+    </div>
+
+    <!-- ═══ SYMBOL EDIT MODE ═══ -->
+    <div class="ctx-section-effect-edit" style="display:none">
+        <div class="ctx-options open" style="display:block">
+            <div class="ctx-opt-label">Change type</div>
+            <div class="fx-picker fx-picker-edit" id="effectPickerEdit"></div>
+            <div class="ctx-opt-label" style="margin-top:6px">Size</div>
+            <div class="ctx-range-row">
+                <input type="range" class="ctx-range" id="editEffectSize" min="0.5" max="3" step="0.25" value="1.5">
+                <span class="ctx-range-value">1.50</span>
+            </div>
+        </div>
+        <div class="context-menu-item context-menu-item-subtle" data-action="deleteEffect">
+            <span class="icon">&#128465;</span> Delete symbol
+            <span class="ctx-shortcut">Del</span>
+        </div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item ctx-done-btn" data-action="close">
+            <span class="icon">&#10003;</span> Done
+        </div>
+    </div>
+
+    <!-- ═══ FLOW COMPLETION MODE ═══ -->
+    <div class="ctx-section-flow" style="display:none">
+        <div class="context-menu-header ctx-flow-header">Arrow: A &#8594; B</div>
+        <div class="context-menu-item ctx-default-action" data-action="completeFlow">
+            <span class="icon">&#10004;</span>
+            <span class="ctx-flow-label">Complete arrow</span>
+            <span class="ctx-shortcut">Enter</span>
+        </div>
+        <div class="context-menu-item context-menu-item-subtle" data-action="cancelFlow">
+            <span class="icon">&#10005;</span> Cancel
+            <span class="ctx-shortcut">Esc</span>
+        </div>
+    </div>
+</div>
+
+    </div> <!-- .map-container -->
+</main>
+
+<!-- Scripts -->
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="js/config.js?v=7"></script>
+<script src="js/examples.js?v=19"></script>
+<script src="js/geodata.js?v=5"></script>
+<script src="js/renderer.js?v=19"></script>
+<script src="js/labels.js?v=5"></script>
+<script src="js/effects.js?v=5"></script>
+<script src="js/parser.js?v=9"></script>
+<script src="js/executor.js?v=10"></script>
+<script src="js/editor.js?v=5"></script>
+<script src="js/context-menu.js?v=5"></script>
+<script src="js/app.js?v=13"></script>
+
+<!-- Bridge to the Pillars of Creation studio: hands the current script off via
+     localStorage, unmodified, as a one-shot key the studio consumes on load.
+     Does not touch anything else in this app. -->
+<script>
+(function () {
+    var btn = document.getElementById('sendToStudioBtn');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+        var code = document.getElementById('editor').value;
+        var header = 'project "Map from Classic Tool" theme clean_modern\nmap 20 10 zoom 2\n\n';
+        try { localStorage.setItem('pnt:handoff', header + code); } catch (e) {}
+        window.location.href = '/';
+    });
+})();
+</script>
+
+</body>
+</html>

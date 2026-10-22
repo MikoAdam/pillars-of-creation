@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { run } from "./interpreter";
 import { sample } from "./timeline";
 import { insertAtTime, writeMove, writeOver } from "./writeback";
-import { SAMPLE_CODE } from "@/editor/sampleCode";
+import { DEMOS } from "@/editor/demos";
 
 const tl = (src: string) => {
   const r = run(src);
@@ -12,7 +12,7 @@ const tl = (src: string) => {
 
 describe("interpreter", () => {
   it("runs the sample program", () => {
-    expect(run(SAMPLE_CODE).ok).toBe(true);
+    expect(run(DEMOS[0]!.code).ok).toBe(true);
   });
   it("wait moves the time cursor; other commands start at it", () => {
     const t = tl(`say "a" as a\nwait 2s\nsay "b" as b`);

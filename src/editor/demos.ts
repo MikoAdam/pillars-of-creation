@@ -1,26 +1,71 @@
-import { SAMPLE_CODE } from "./sampleCode";
-
 export interface Demo { id: string; name: string; code: string }
 
+/** Short starting points. Each line is a plain command: change a word or number and the video changes. */
 export const DEMOS: Demo[] = [
-  { id: "chernobyl", name: "Chernobyl Explained", code: SAMPLE_CODE },
   {
-    id: "coffee",
-    name: "The Price of Coffee",
-    code: `project "Why Coffee Got Expensive" theme clean_modern
+    id: "nebula",
+    name: "Star formation: photo and one number",
+    code: `project "Star Formation in the Eagle Nebula" theme clean_modern
 
-headline "Coffee prices hit a record high as harvests fail" paper "THE MORNING LEDGER" body "Drought in Brazil and Vietnam cut supply just as demand kept climbing worldwide." mark "record high" mark "harvests fail" over 3s enter drop
-camera zoom 1.15 over 4s ease smooth
-wait 4.5s
+# The photo runs for the first few seconds. Change the caption to change the story.
+show photo @pillars as nebula enter fade
+zoom nebula 1.0 to 1.12 over 6s ease smooth
+caption nebula "The Pillars of Creation, Eagle Nebula (M16)"
+wait 4s
+
+# One figure, with its source. Edit the number or the label to adjust.
+count 6500 suffix " light years" label "Distance from Earth" over 2.5s as dist enter rise
+source dist "NASA, Hubble Space Telescope" https://science.nasa.gov
+wait 4s
+crossfade 0.8
+
+# Closing line. *Words in asterisks* are highlighted.
+say "Stars are born *inside clouds of dust and gas*" beat 0.4s enter blur
+wait 3s
+`,
+  },
+  {
+    id: "webb",
+    name: "Webb's mirror: photo and counters",
+    code: `project "Inside the James Webb Space Telescope" theme clean_modern
+
+show photo @telescope as webb enter fade
+zoom webb 1.0 to 1.1 over 5s ease smooth
+caption webb "Webb's primary mirror: 18 gold-coated segments"
+wait 4s
+wipe 0.6
+
+# Each counter is a separate scene. Swap the number or label to reuse the pattern.
+count 6.5 suffix " m" label "Diameter of the primary mirror" over 2s as mirror enter pop
+source mirror "NASA" https://www.nasa.gov/webb
+wait 3s
 push 0.6
 
-line "Arabica price, $ per lb" "2019" 1.0 "2020" 1.1 "2021" 1.9 "2022" 2.2 "2023" 1.7 "2024" 2.9 over 3s as price enter blur
+count 18 label "Hexagonal segments, aligned after launch" over 2s as segs enter rise
+wait 3.5s
+push 0.6
+
+say "Light from the *first galaxies* took more than 13 billion years to reach us" beat 0.4s enter blur
+wait 3s
+`,
+  },
+  {
+    id: "coffee",
+    name: "Coffee prices: chart and an unverified figure",
+    code: `project "Why Coffee Got Expensive" theme clean_modern
+
+headline "Coffee prices climbed as harvests shrank" paper "THE MORNING LEDGER" body "A drought in one growing region can move prices worldwide." mark "shrank" over 3s enter drop
+wait 4s
+push 0.6
+
+# These numbers are illustrative. "unverified" puts a note on screen until a real source is added.
+line "Arabica price, $ per lb (illustrative)" "2019" 1.0 "2020" 1.1 "2021" 1.9 "2022" 2.2 "2023" 1.7 over 3s as price enter blur
 unverified price
-camera to 1400 400 zoom 1.5 over 1s ease snap delay 3s
-wait 4.5s
+camera to 1300 420 zoom 1.4 over 1s ease snap delay 3s
+wait 4s
 whip 0.5
 
-count 70 suffix "%" label "Share of beans from just five countries" over 2s as share enter pop
+count 70 suffix "%" label "Share of beans from five countries (illustrative)" over 2s as share enter pop
 unverified share
 wiggle share over 0.8s delay 2s
 wait 3.5s
@@ -28,154 +73,6 @@ wipe 0.6
 
 say "Your morning cup is a *climate* story" beat 0.35s enter rise
 wait 3s
-`,
-  },
-  {
-    id: "startup",
-    name: "Startup Growth",
-    code: `project "From Zero to a Million Users" theme clean_modern
-
-say "Year one: *nobody* noticed" beat 0.3s enter blur exit blur
-wait 2.5s
-whip 0.5
-
-line "Monthly users (thousands)" "Jan" 2 "Mar" 5 "May" 14 "Jul" 60 "Sep" 240 "Nov" 1000 over 3s enter rise
-camera to 1500 350 zoom 1.6 over 0.8s ease snap delay 3s
-shake 14 over 0.4s delay 3.8s
-wait 4.5s
-zoom
-
-count 1 suffix "M" label "Users after 11 months" over 1.5s as users enter spin
-pulse users 0.2 over 0.6s delay 1.5s
-wait 3s
-push 0.6
-
-bars "Where users came from (%)" "Search" 18 "Ads" 12 "Word of mouth" 70 over 3s enter slide_left
-circle at 1500 560 radius 160 over 0.6s delay 3s
-wait 4s
-blur 0.6
-
-say "Build something people *tell friends about*" beat 0.3s enter pop
-move say2 to 960 480 curve 120 over 1.2s ease spring delay 2s
-wait 3s
-`,
-  },
-  {
-    id: "showcase",
-    name: "Feature Showcase (university briefing)",
-    code: `project "Department of Astrophysics — Research Briefing" theme clean_modern
-style radius 12
-
-# --- 1. Title card
-say "Star Formation in the *Eagle Nebula*" at 960 520 beat 0.35s enter fade exit fade
-wait 3s
-crossfade 0.8
-
-# --- 2. Photo: slow zoom, caption, gentle camera drift
-show photo @pillars as nebula enter fade
-zoom nebula 1.0 to 1.12 over 6s ease smooth
-caption nebula "Fig. 1 — The Pillars of Creation, M16"
-fade nebula to 0.85 over 1s delay 4.5s
-wait 6s
-wipe 0.7
-
-# --- 3. Key figure with citation
-count 6500 suffix " ly" label "Distance from Earth" over 2.5s as dist enter rise
-source dist "NASA Science" https://science.nasa.gov
-unverified dist
-pulse dist 0.06 over 0.8s delay 2.6s
-shake 3 over 0.3s delay 2.6s
-wait 4s
-crossfade 0.7
-
-# --- 4. Results with annotations
-bars "Observed protostars by region" "Pillar I" 40 "Pillar II" 65 "Pillar III" 80 "Periphery" 95 over 3s enter rise
-highlight from 90 128 to 1240 128 over 0.6s delay 3.2s
-box at 80 590 size 440 360 over 0.6s delay 3.6s
-circle at 1620 324 radius 64 over 0.6s delay 4s
-wait 5s
-push 0.7
-
-# --- 5. Trend with focused camera
-line "Publications per year" "2019" 2 "2020" 5 "2021" 9 "2022" 20 over 3s as growth enter fade
-camera to 1180 560 zoom 1.2 over 1.2s ease smooth delay 3s
-wait 5s
-blur 0.6
-
-# --- 6. Press coverage
-headline "New images reveal stellar nurseries in unprecedented detail" paper "UNIVERSITY NEWS" body "Researchers from the department analysed infrared data from the James Webb Space Telescope." mark "unprecedented detail" over 3s enter fade
-wait 4.5s
-crossfade 0.8
-
-# --- 7. Methodology diagram drawn with a loop
-let gap = 380
-say "Data *pipeline*" at 960 220 beat 0.3s as title enter fade
-wait 0.8s
-for i from 0 to 3
-  arrow from (250 + i*gap) 650 to (450 + i*gap) 650 over 0.4s
-  wait 0.3s
-end
-move title to 960 420 curve 40 over 1.2s ease smooth
-scale title 1.1 over 0.6s delay 1.4s
-rotate title -2 over 0.6s delay 2.2s
-wiggle title over 0.4s delay 2.8s
-wait 3.5s
-`,
-  },
-  {
-    id: "yugoslav",
-    name: "Map: The Yugoslav Wars",
-    code: `project "The Yugoslav Wars, 1991-1999" theme clean_modern
-# Map briefing: coloured countries, attack arrows, symbols, camera flights.
-# Click a line to select it on the map, or drag pins, labels and arrow handles.
-
-map 44 18 zoom 5.2 as balkans
-year "1991"
-wait 1s
-
-country slovenia green pulse
-pin 46.05 14.5 flag green
-legend "Slovenia" green
-wait 1.2s
-
-country serbia red pulse
-pin 44.8 20.46 troops red
-legend "Serbia" red
-wait 1.2s
-
-country croatia blue sweep
-attack serbia croatia red bend 0.2 width 1.4
-pin 45.35 19.0 battle red delay 1s
-legend "Croatia" blue
-wait 2.8s
-
-year "1992"
-country bosnia purple radial
-attack serbia bosnia red bend -0.15 delay 0.6s
-legend "Bosnia and Herzegovina" purple
-wait 2.4s
-
-fly 44.1 19.2 zoom 6.6 tilt 35 over 2s
-year "1995" highlight
-wait 2s
-pin 44.1 19.3 skull red size 1.3
-bubble 44.35 19.3 "Srebrenica, July 1995: about 8,000 Bosniak men and boys killed" red delay 0.4s
-wait 3.5s
-
-remove labels
-pin 43.86 18.41 bombing blue size 1.2
-tag 43.86 18.75 "NATO air campaign" left blue
-wait 2.5s
-
-remove arrows
-fly 43.4 20.4 zoom 6.2 tilt 0 over 2s
-year "1999" highlight
-wait 1.6s
-country kosovo orange pulse
-pin 42.66 21.16 capital orange
-label 42.25 20.9 "Kosovo" size 20
-legend "Kosovo" orange
-wait 3.5s
 `,
   },
 ];

@@ -375,12 +375,13 @@ export function drawRoute(ctx: CanvasRenderingContext2D, a: [number, number], b:
 /** Built-in pop for studio symbols (0.35s appear). */
 export const popIn = (local: number) => (local >= 0.35 ? 1 : Math.max(0, 1 + 2.7 * Math.pow(local / 0.35 - 1, 3) + 1.7 * Math.pow(local / 0.35 - 1, 2)));
 
-export function drawPin(ctx: CanvasRenderingContext2D, sym: SymbolName, color: string, size: number, local: number) {
+export function drawPin(ctx: CanvasRenderingContext2D, sym: SymbolName, color: string, size: number, local: number, zoom: number) {
   const k = popIn(local);
   if (k <= 0) return;
+  const zoomComp = clamp(Math.pow(2, (zoom - 4) * 0.25), 0.4, 2);
   ctx.save();
   ctx.scale(k, k);
-  drawSymbol(ctx, sym, color, 26 * size);
+  drawSymbol(ctx, sym, color, 26 * size * zoomComp);
   ctx.restore();
 }
 

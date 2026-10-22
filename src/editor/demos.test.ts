@@ -22,7 +22,11 @@ import { applyStyle, getTheme, THEMES } from "@/render/theme";
 
 describe("looks", () => {
   it("there is exactly one look", () => expect(THEMES.length).toBe(1));
-  it("there are exactly five demos", () => expect(DEMOS.length).toBe(5));
+  it("there are three examples", () => expect(DEMOS.length).toBe(3));
+  for (const d of DEMOS) it(`${d.name} runs for at least 10 seconds`, () => {
+    const r = run(d.code);
+    expect(r.ok ? r.timeline.duration : 0).toBeGreaterThan(10);
+  });
   it("style lines override the look and reset removes them", () => {
     const base = 'project "X" theme clean_modern\nsay "hi"\n';
     const tl1 = (run(base) as any).timeline;

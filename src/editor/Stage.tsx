@@ -5,7 +5,7 @@ import { attackCurve } from "@/render/scenes/map";
 import { makeProjection } from "@/render/geo";
 import { HEIGHT, WIDTH, type Assets, type Theme } from "@/render/types";
 
-export type Tool = "select" | "text" | "arrow" | "circle" | "box" | "highlight" | "camera" | "map";
+export type Tool = "select" | "text" | "arrow" | "circle" | "box" | "highlight" | "camera";
 
 export interface FxDrop { kind: "enter" | "exit" | "pulse" | "wiggle"; style?: string }
 
@@ -27,10 +27,6 @@ interface Props {
   onDropAsset: (name: string) => void;
   onFx: (o: TObj, fx: FxDrop) => void;
   onNotice: (msg: string) => void;
-  /** map tool: click a country (shift = region) */
-  onMapClick: (lng: number, lat: number, region: boolean) => void;
-  /** map tool: drag from one place to another = attack arrow */
-  onMapDrag: (a: [number, number], b: [number, number]) => void;
   /** attack handles: start, end or bend */
   onGeoHandle: (o: TObj, which: "a" | "b" | "bend", x: number, y: number) => void;
 }
@@ -42,7 +38,7 @@ type Drag =
   | { kind: "move"; o: TObj; sx: number; sy: number; dx: number; dy: number }
   | { kind: "scale"; o: TObj; cx: number; cy: number; d0: number; mul: number }
   | { kind: "rotate"; o: TObj; cx: number; cy: number; a0: number; drot: number }
-  | { kind: "pen"; x1: number; y1: number; x2: number; y2: number; shift?: boolean }
+  | { kind: "pen"; x1: number; y1: number; x2: number; y2: number }
   | { kind: "geo"; o: TObj; which: "a" | "b" | "bend"; x: number; y: number };
 
 export function Stage(p: Props) {
@@ -107,11 +103,6 @@ export function Stage(p: Props) {
     e.currentTarget.setPointerCapture(e.pointerId);
     if (p.tool === "text") { setTextAt({ x: m.sx, y: m.sy }); setTextVal(""); return; }
     if (p.tool === "camera") { setDrag({ kind: "pen", x1: m.x, y1: m.y, x2: m.x, y2: m.y }); return; }
-    if (p.tool === "map") {
-      if (!proj) { p.onNotice("Start a map first: drag the Map chip onto the video, or type map 48 15 zoom 4"); return; }
-      setDrag({ kind: "pen", x1: m.sx, y1: m.sy, x2: m.sx, y2: m.sy, shift: e.shiftKey });
-      return;
-    }
     if (p.tool !== "select") { setDrag({ kind: "pen", x1: m.sx, y1: m.sy, x2: m.sx, y2: m.sy }); return; }
     if (handles && selected) {
       for (const w of ["a", "b", "bend"] as const) {
@@ -166,10 +157,6 @@ export function Stage(p: Props) {
     } else if (d.kind === "rotate") {
       if (Math.abs(d.drot) < 1) return;
       p.onRotate(d.o, Math.round(sample(d.o.rot, p.t)[0] + d.drot));
-    } else if (p.tool === "map" && proj) {
-      const a = proj.unproject(d.x1, d.y1), b = proj.unproject(d.x2, d.y2);
-      if (Math.hypot(d.x2 - d.x1, d.y2 - d.y1) < 15) p.onMapClick(a[0], a[1], !!d.shift);
-      else p.onMapDrag(a, b);
     } else if (p.tool === "camera" && proj && mapObj) {
       // on a map, the camera tool flies the map camera to the drawn frame
       const w = Math.abs(d.x2 - d.x1), h = Math.abs(d.y2 - d.y1);
@@ -283,7 +270,7 @@ export function Stage(p: Props) {
       {penPts && (
         <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${WIDTH} ${HEIGHT}`}>
           <g className="stroke-primary" fill="none" strokeWidth={8} strokeDasharray="16 10">
-            {(p.tool === "arrow" || p.tool === "highlight" || p.tool === "map") && <line x1={penPts.x1} y1={penPts.y1} x2={penPts.x2} y2={penPts.y2} />}
+            {(p.tool === "arrow" || p.tool === "highlight") && <line x1={penPts.x1} y1={penPts.y1} x2={penPts.x2} y2={penPts.y2} />}
             {p.tool === "circle" && <circle cx={penPts.x1} cy={penPts.y1} r={Math.hypot(penPts.x2 - penPts.x1, penPts.y2 - penPts.y1)} />}
             {(p.tool === "box" || p.tool === "camera") && <rect x={Math.min(penPts.x1, penPts.x2)} y={Math.min(penPts.y1, penPts.y2)} width={Math.abs(penPts.x2 - penPts.x1)} height={Math.abs(penPts.y2 - penPts.y1)} rx={p.tool === "camera" ? 16 : 0} />}
           </g>
