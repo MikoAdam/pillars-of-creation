@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video, RotateCcw, Film, Globe2 } from "lucide-react";
-import { featureAt, loadGeo, toNorm } from "@/render/geo";
+import { featureAt, geoReady, loadGeo, toNorm } from "@/render/geo";
 import { MapInspector } from "@/editor/MapPanel";
 import { ExportDialog } from "@/editor/ExportDialog";
 import { VoicePanel } from "@/editor/VoicePanel";
@@ -97,7 +97,7 @@ function Studio() {
   const [geoVersion, setGeoVersion] = useState(0);
   useEffect(() => {
     const id = setTimeout(() => {
-      const r = run(code); console.log("DBG", r.ok, geoReady("countries"), r.ok ? r.timeline.needsGeo : r.error.message);
+      const r = run(code);
       if (r.ok) {
         setTimeline(r.timeline); setError(null);
         // map outlines load once in the background, then the script runs again
