@@ -8,91 +8,103 @@ export interface Demo {
 
 const EU_MAP = "EU enlargement, 2004 (demo)";
 
-/** Short starting points. Each line is a plain command: change a word or number and the video changes. */
+/** Starting points. Each line is a plain command: change a word or number and the video changes. */
 export const DEMOS: Demo[] = [
   {
-    id: "stars",
-    name: "Why stars shine: photo and a counter",
-    code: `project "Why stars shine" theme clean_modern
+    id: "pillars",
+    name: "Inside the Pillars of Creation",
+    code: `project "Inside the Pillars of Creation" theme clean_modern
 
 show photo @pillars as pillars enter fade
-zoom pillars 1.0 to 1.1 over 6s ease smooth
+zoom pillars 1.0 to 1.25 over 14s ease smooth
 caption pillars "The Pillars of Creation, Eagle Nebula (M16)"
-wait 4s
-crossfade 0.8
+wait 7s
+whip 0.5
 
-say "Stars are made mostly of *hydrogen*" at 960 540 beat 0.4s enter pop
-wait 2.5s
-count 4 label "hydrogen nuclei fuse into one helium nucleus" over 2s as fuse enter rise
-source fuse "Stellar fusion, standard astrophysics" https://science.nasa.gov
-wait 4s
-wipe 0.6
+count 6500 suffix " light years" label "Distance from Earth" over 2s as dist enter rise
+source dist "NASA, Hubble Space Telescope" https://science.nasa.gov
+shake 10 over 0.6s delay 2.2s
+wait 6s
+push 0.6
 
-say "That fusion releases the light you can *see* from Earth" beat 0.4s enter blur
-wait 3s
+say "The light you see left these clouds about *6,500 years* ago" at 960 540 beat 0.4s enter blur
+wait 5s
+blur 0.6
 `,
   },
   {
     id: "eu",
-    name: "EU enlargement, 2004: a map",
+    name: "EU enlargement, 2004: a 3D map",
     code: `project "The 2004 enlargement of the EU" theme clean_modern
 
 say "On 1 May 2004, *ten countries* joined the European Union" at 960 540 beat 0.4s enter blur exit blur
 wait 3.5s
 crossfade 0.8
 
-# The map is stored separately and plays from its own script. Edit it with "Edit map".
+# The map plays from its own script. Open it with "Edit map" to change it.
 include map "${EU_MAP}"
 wait 1s
 crossfade 0.8
 
-say "Colours show the groups of countries, nothing else" beat 0.35s enter rise
+say "Together: about *74 million people*" at 960 540 beat 0.4s enter pop
 wait 3s
 `,
     maps: {
-      [EU_MAP]: `map 50 12 zoom 3.6 as europe
+      [EU_MAP]: `map 60 20 zoom 1.6 as europe
 year "2004" highlight
 wait 1s
 
+fly 50 15 zoom 3.4 tilt 40 turn -12 over 3s
+wait 3s
+
 country poland blue fade
+bubble 52.2 19.2 "Poland, the largest of the ten" blue
+wait 1.5s
 country czechia blue fade
 country slovakia blue fade
 country hungary blue fade
 country slovenia blue fade
 wait 1.5s
 
-country estonia green fade
-country latvia green fade
-country lithuania green fade
+country estonia green sweep
+country latvia green sweep
+country lithuania green sweep
 wait 1.5s
 
-country cyprus orange fade
-country malta orange fade
+country cyprus orange radial
+country malta orange radial
 wait 1.5s
 
 legend "Central Europe" blue
 legend "Baltic states" green
 legend "Mediterranean islands" orange
-wait 2s
+fly 50 15 zoom 2.6 tilt 0 turn 0 over 2.5s
+wait 3s
 `,
     },
   },
   {
-    id: "week",
-    name: "A week in hours: an illustrative chart",
-    code: `project "Where a week goes (illustrative)" theme clean_modern
+    id: "webb",
+    name: "Webb's mirror, in numbers",
+    code: `project "Inside the James Webb Space Telescope" theme clean_modern
 
-headline "A week has 168 hours. Where do yours go?" paper "THE DAILY LEDGER" body "These numbers are illustrative. Replace them with your own before you publish." mark "168 hours" over 3s enter drop
-wait 4.5s
+show photo @telescope as webb enter fade
+zoom webb 1.0 to 1.12 over 6s ease smooth
+caption webb "Webb's primary mirror: 18 gold-coated segments"
+wait 4s
+wipe 0.6
+
+bars "Primary mirror diameter (metres)" "Hubble" 2.4 "Webb" 6.5 over 3s as mirrors enter rise
+source mirrors "NASA" https://www.nasa.gov/webb
+wait 4s
 push 0.6
 
-# "unverified" puts a note on screen until the numbers are checked.
-bars "Hours per week (illustrative)" "Sleep" 56 "Work" 40 "Commute" 5 "Everything else" 67 over 3s as week enter rise
-unverified week
-wait 4.5s
+count 18 label "Hexagonal segments, aligned after launch" over 2s as segs enter pop
+shake 8 over 0.4s delay 2s
+wait 3.5s
 whip 0.5
 
-say "Change any number and the chart follows" beat 0.35s enter rise
+say "It sees the light of the *first galaxies*, more than 13 billion years old" beat 0.4s enter blur
 wait 3s
 `,
   },
