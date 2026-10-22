@@ -11,7 +11,7 @@ import { run } from "@/lang/interpreter";
 
 describe("demo scripts", () => {
   for (const d of DEMOS) it(`${d.name} runs without errors`, () => {
-    const r = run(d.code);
+    const r = run(d.code, { resolveMap: (n) => d.maps?.[n] });
     expect(r.ok ? "ok" : r.error.message + " @ line " + r.error.line).toBe("ok");
   });
 });
@@ -22,7 +22,11 @@ import { applyStyle, getTheme, THEMES } from "@/render/theme";
 
 describe("looks", () => {
   it("there is exactly one look", () => expect(THEMES.length).toBe(1));
-  it("there are exactly five demos", () => expect(DEMOS.length).toBe(5));
+  it("there are three examples", () => expect(DEMOS.length).toBe(3));
+  for (const d of DEMOS) it(`${d.name} runs for at least 30 seconds`, () => {
+    const r = run(d.code, { resolveMap: (n) => d.maps?.[n] });
+    expect(r.ok ? r.timeline.duration : 0).toBeGreaterThan(30);
+  });
   it("style lines override the look and reset removes them", () => {
     const base = 'project "X" theme clean_modern\nsay "hi"\n';
     const tl1 = (run(base) as any).timeline;

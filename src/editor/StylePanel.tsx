@@ -56,8 +56,8 @@ export function StylePanel({ base, theme, overridden, onSet, onReset }: Props) {
 
   return (
     <div ref={ref} className="relative">
-      <button onClick={() => setOpen((o) => !o)} title="Adjust this look" className={`flex items-center gap-1.5 rounded-md border border-border px-2 py-1 ${open ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground"}`}>
-        <SlidersHorizontal className="h-3.5 w-3.5" /> Adjust
+      <button onClick={() => setOpen((o) => !o)} title="Colours and fonts for the whole video" className={`flex items-center gap-1.5 rounded-md border border-border px-2 py-1 ${open ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground"}`}>
+        <SlidersHorizontal className="h-3.5 w-3.5" /> Style
         {overridden.size > 0 && <span className="rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{overridden.size}</span>}
       </button>
       {open && (

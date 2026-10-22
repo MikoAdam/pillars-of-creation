@@ -10,5 +10,3 @@
 - [ ] AI for maps / Generate from topic — waits on the user's go-ahead (needs Lovable Cloud)
 - [ ] Lower-thirds, chapter title cards, end credits
 - [ ] Callouts on photos, timeline/pie/comparison-table diagrams
-
-- [ ] Dark mode toggle (dark by default) + general polish

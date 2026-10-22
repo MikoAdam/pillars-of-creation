@@ -16,6 +16,20 @@ export const BUILTIN_MEDIA: MediaItem[] = [
 
 const CODE_KEY = "pnt:code";
 const MEDIA_KEY = "pnt:media";
+const HANDOFF_KEY = "pnt:handoff";
+
+/** One-shot script handed off from an external tool (the classic Map Creator at
+ * /map-tool/): read once on load, then cleared, so it takes priority over the
+ * regular autosave exactly one time. */
+export function takeHandoff(): string | null {
+  try {
+    const v = localStorage.getItem(HANDOFF_KEY);
+    if (v !== null) localStorage.removeItem(HANDOFF_KEY);
+    return v;
+  } catch {
+    return null;
+  }
+}
 
 export function loadSaved(): { code: string | null; media: MediaItem[] } {
   try {

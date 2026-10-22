@@ -24,12 +24,27 @@ async function load() {
   } as never)) as unknown as Asr;
 }
 
+const WINDOW_S = 30;
+
 self.onmessage = async (e: MessageEvent<{ audio: Float32Array }>) => {
   try {
     asr ??= await load();
+    const audio = e.data.audio;
+    const win = 16000 * WINDOW_S;
+    const n = Math.max(1, Math.ceil(audio.length / win));
+    const chunks: { timestamp: [number, number | null]; text: string }[] = [];
     self.postMessage({ type: "progress", stage: "transcribe", progress: 0 });
-    const out = await asr(e.data.audio, { return_timestamps: true, chunk_length_s: 30, stride_length_s: 5 });
-    self.postMessage({ type: "done", chunks: out.chunks ?? [{ timestamp: [0, null], text: out.text }] });
+    for (let i = 0; i < n; i++) {
+      const out = await asr(audio.subarray(i * win, (i + 1) * win), { return_timestamps: true });
+      const offset = i * WINDOW_S;
+      const part = (out.chunks ?? [{ timestamp: [0, null] as [number, number | null], text: out.text }]).map((c) => ({
+        timestamp: [c.timestamp[0] + offset, c.timestamp[1] === null ? null : c.timestamp[1] + offset] as [number, number | null],
+        text: c.text,
+      }));
+      chunks.push(...part);
+      self.postMessage({ type: "chunk", progress: ((i + 1) / n) * 100, text: part.map((c) => c.text).join(" ").trim() });
+    }
+    self.postMessage({ type: "done", chunks });
   } catch (err) {
     self.postMessage({ type: "error", message: String((err as Error)?.message ?? err) });
   }
