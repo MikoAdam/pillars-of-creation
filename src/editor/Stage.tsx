@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as RPE, type DragEvent }
 import { renderTimeline, type Override } from "@/engine/renderTimeline";
 import { alive, anchorAt, geoEnds, mapCamAt, sample, toCanvas, toScene, worldBox, type TObj, type Timeline } from "@/lang/timeline";
 import { attackCurve } from "@/render/scenes/map";
-import { makeProjection } from "@/render/geo";
+import { geoReady, makeProjection } from "@/render/geo";
 import { HEIGHT, WIDTH, type Assets, type Theme } from "@/render/types";
 
 export type Tool = "select" | "text" | "arrow" | "circle" | "box" | "highlight" | "camera";
@@ -249,6 +249,12 @@ export function Stage(p: Props) {
       onDrop={onDrop}
     >
       <canvas ref={canvas} width={WIDTH} height={HEIGHT} className="block h-full w-full" />
+      {!geoReady("countries") && tl.objects.some((o) => o.kind === "map") && (
+        <div role="status" className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 bg-background/70 text-sm text-muted-foreground">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          Loading map outlines…
+        </div>
+      )}
       {sel && (
         <div className="pointer-events-none absolute rounded-sm border-2 border-primary" style={{ left: pct(sel[0], WIDTH), top: pct(sel[1], HEIGHT), width: pct(sel[2], WIDTH), height: pct(sel[3], HEIGHT) }}>
           <span className="absolute -top-6 left-0 rounded-md bg-primary px-1.5 font-mono text-[11px] text-primary-foreground">

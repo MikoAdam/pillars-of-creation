@@ -58,17 +58,6 @@ export function unwrapRing(r: ArrayLike<number>, cx: number): number[] {
   return out.map((v, i) => (i % 2 === 0 ? v + shift : v));
 }
 
-function ringsPath(ctx: CanvasRenderingContext2D, f: GeoFeature, pr: Projection, cx: number) {
-  for (const r of f.rings) {
-    const u = unwrapRing(r, cx);
-    for (let i = 0; i < u.length; i += 2) {
-      const [x, y] = pr.normRaw(u[i], u[i + 1]);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-  }
-}
-
 /** Screen bbox of a feature (corner sampling, good enough for culling and clips). */
 function screenBox(f: GeoFeature, pr: Projection, cx: number): [number, number, number, number] {
   const [a, b, c, d] = f.bbox;
@@ -123,13 +112,111 @@ function nativeLabelSize(zoom: number) {
   return 15 * S;
 }
 
-export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapCam, fills: MapFill[], labels: boolean, t: number, renames: MapRename[] = []) {
+type Box4 = [number, number, number, number];
+
+interface MapView {
+  pr: Projection;
+  cx: number;
+  lod: number;
+  boxes: Map<GeoFeature, Box4>;
+  land: Path2D;
+  paths: Map<GeoFeature, Path2D>;
+  base?: HTMLCanvasElement;
+  uses: number;
+}
+
+const PREVIEW_W = 1920;
+
+const views = new Map<string, MapView>();
+const VIEW_LIMIT = 6;
+
+/** Outline detail by zoom: far views use fewer points, which is all the eye can see at that size. */
+const LOD_TOL = [0, 0.0004, 0.0012, 0.003];
+const lodCache = new WeakMap<GeoFeature, ArrayLike<number>[][]>();
+
+function decimate(r: ArrayLike<number>, tol: number): number[] {
+  const out = [r[0], r[1]];
+  let lx = r[0], ly = r[1];
+  for (let i = 2; i < r.length - 2; i += 2) {
+    if (Math.abs(r[i] - lx) + Math.abs(r[i + 1] - ly) >= tol) { out.push(r[i], r[i + 1]); lx = r[i]; ly = r[i + 1]; }
+  }
+  out.push(r[r.length - 2], r[r.length - 1]);
+  return out;
+}
+
+function lodFor(zoom: number) {
+  return zoom >= 5 ? 0 : zoom >= 3 ? 1 : zoom >= 1.6 ? 2 : 3;
+}
+
+function ringsAt(f: GeoFeature, lod: number): ArrayLike<number>[] {
+  if (lod === 0) return f.rings;
+  let levels = lodCache.get(f);
+  if (!levels) { levels = []; lodCache.set(f, levels); }
+  if (!levels[lod]) levels[lod] = f.rings.map((r) => decimate(r, LOD_TOL[lod]));
+  return levels[lod];
+}
+
+function addRings(p: Path2D, f: GeoFeature, pr: Projection, cx: number, lod: number) {
+  for (const r of ringsAt(f, lod)) {
+    const u = unwrapRing(r, cx);
+    for (let i = 0; i < u.length; i += 2) {
+      const [x, y] = pr.normRaw(u[i], u[i + 1]);
+      if (i === 0) p.moveTo(x, y); else p.lineTo(x, y);
+    }
+    p.closePath();
+  }
+}
+
+/** Projected outlines for one camera, built once and reused while the camera holds still. */
+function viewFor(cam: MapCam, countries: GeoFeature[]): MapView {
+  const key = [cam.lat, cam.lng, cam.zoom, cam.tilt, cam.turn].join("|");
+  const hit = views.get(key);
+  if (hit) return hit;
   const pr = makeProjection(cam);
   const cx = pr.invertNorm(960, 540)[0];
+  const lod = lodFor(cam.zoom);
+  const boxes = new Map<GeoFeature, Box4>();
+  const land = new Path2D();
+  for (const f of countries) {
+    const b = screenBox(f, pr, cx);
+    boxes.set(f, b);
+    if (visible(b)) addRings(land, f, pr, cx, lod);
+  }
+  const view: MapView = { pr, cx, lod, boxes, land, paths: new Map(), uses: 0 };
+  if (views.size >= VIEW_LIMIT) views.delete(views.keys().next().value as string);
+  views.set(key, view);
+  return view;
+}
+
+function featurePath(view: MapView, f: GeoFeature): Path2D {
+  let p = view.paths.get(f);
+  if (!p) {
+    p = new Path2D();
+    addRings(p, f, view.pr, view.cx, view.lod);
+    view.paths.set(f, p);
+  }
+  return p;
+}
+
+/** Ocean, land and borders for one camera. Painted once per camera and drawn as a bitmap on preview frames. */
+function paintBase(g: CanvasRenderingContext2D, view: MapView, cam: MapCam) {
+  g.fillStyle = OCEAN;
+  g.fillRect(-200, -200, 2320, 1480);
+  g.fillStyle = LAND;
+  g.fill(view.land, "evenodd");
+  g.lineJoin = "round";
+  g.strokeStyle = BORDER;
+  g.lineWidth = Math.min(2.2, 1.1 + cam.zoom * 0.12);
+  g.globalAlpha *= 0.8;
+  g.stroke(view.land);
+  g.globalAlpha /= 0.8;
+}
+
+export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapCam, fills: MapFill[], labels: boolean, t: number, renames: MapRename[] = []) {
   ctx.save();
-  ctx.fillStyle = OCEAN;
-  ctx.fillRect(-200, -200, 2320, 1480);
   if (!geoReady("countries")) {
+    ctx.fillStyle = OCEAN;
+    ctx.fillRect(-200, -200, 2320, 1480);
     ctx.fillStyle = "rgba(44,62,80,0.55)";
     ctx.font = bodyFont(theme, 32, 500);
     ctx.textAlign = "center";
@@ -138,21 +225,33 @@ export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapC
     return;
   }
   const countries = geoFeatures("countries");
-  const boxes = new Map<GeoFeature, [number, number, number, number]>();
-  ctx.beginPath();
-  for (const f of countries) {
-    const b = screenBox(f, pr, cx);
-    boxes.set(f, b);
-    if (visible(b)) ringsPath(ctx, f, pr, cx);
+  const view = viewFor(cam, countries);
+  const { pr, cx, boxes } = view;
+  view.uses++;
+  if (ctx.canvas.width === PREVIEW_W && view.uses > 1) {
+    if (!view.base) {
+      const c = document.createElement("canvas");
+      c.width = 2320;
+      c.height = 1480;
+      const g = c.getContext("2d")!;
+      g.translate(200, 200);
+      paintBase(g, view, cam);
+      view.base = c;
+    }
+    ctx.drawImage(view.base, -200, -200);
+  } else if (ctx.canvas.width === PREVIEW_W) {
+    const c = document.createElement("canvas");
+    c.width = 1160;
+    c.height = 740;
+    const g = c.getContext("2d")!;
+    g.scale(0.5, 0.5);
+    g.translate(200, 200);
+    paintBase(g, view, cam);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(c, -200, -200, 2320, 1480);
+  } else {
+    paintBase(ctx, view, cam);
   }
-  ctx.fillStyle = LAND;
-  ctx.fill("evenodd");
-  ctx.lineJoin = "round";
-  ctx.strokeStyle = BORDER;
-  ctx.lineWidth = Math.min(2.2, 1.1 + cam.zoom * 0.12);
-  ctx.globalAlpha *= 0.8;
-  ctx.stroke();
-  ctx.globalAlpha /= 0.8;
 
   // colourings — original fill animations (renderer.js drawFeature)
   for (const f of fills) {
@@ -176,44 +275,35 @@ export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapC
       }
     }
     if (fa <= 0 && oa <= 0) continue;
+    const path = featurePath(view, f.feature);
     ctx.save();
-    ctx.beginPath();
-    ringsPath(ctx, f.feature, pr, cx);
     if (f.occupied) {
       ctx.save();
-      ctx.clip("evenodd");
+      ctx.clip(path, "evenodd");
       ctx.globalAlpha *= fa;
       ctx.fillStyle = stripePattern(ctx, f.color);
       ctx.fillRect(b[0] - T2, b[1] - T2, b[2] - b[0] + 2 * T2, b[3] - b[1] + 2 * T2);
       ctx.restore();
       ctx.save();
-      ctx.beginPath();
-      ringsPath(ctx, f.feature, pr, cx);
       ctx.globalAlpha *= oa;
       ctx.strokeStyle = darken(f.color, 0.3);
       ctx.lineWidth = ow;
       ctx.setLineDash([8 * S, 5.3 * S]);
-      ctx.stroke();
+      ctx.stroke(path);
       ctx.restore();
     } else {
       if (fa > 0) {
-        ctx.save();
-        ctx.beginPath();
-        ringsPath(ctx, f.feature, pr, cx);
         ctx.globalAlpha *= fa;
         ctx.fillStyle = f.color;
-        ctx.fill("evenodd");
-        ctx.restore();
+        ctx.fill(path, "evenodd");
       }
       if (oa > 0) {
         ctx.save();
-        ctx.beginPath();
-        ringsPath(ctx, f.feature, pr, cx);
         ctx.globalAlpha *= oa;
         ctx.strokeStyle = f.color;
         ctx.lineWidth = ow;
         ctx.filter = `blur(${(3 * S).toFixed(1)}px)`;
-        ctx.stroke();
+        ctx.stroke(path);
         ctx.restore();
       }
     }

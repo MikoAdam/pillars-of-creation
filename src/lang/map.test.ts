@@ -102,10 +102,12 @@ describe("legacy map commands (colon form)", () => {
     const near = (a: number[], b: number[]) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i], 9));
     near(unwrapRing([0.99, 0.5, 0.01, 0.5, 0.01, 0.6, 0.99, 0.5], 0), [-0.01, 0.5, 0.01, 0.5, 0.01, 0.6, -0.01, 0.5]);
     near(unwrapRing([0.4, 0.2, 0.5, 0.2, 0.6, 0.3, 0.4, 0.2], 0.5), [0.4, 0.2, 0.5, 0.2, 0.6, 0.3, 0.4, 0.2]);
+    let jumps = 0;
     for (const f of geoFeatures("countries")) for (const r of f.rings) {
       const u = unwrapRing(r, 0);
-      for (let i = 2; i < u.length; i += 2) expect(Math.abs(u[i] - u[i - 2])).toBeLessThanOrEqual(0.5);
+      for (let i = 2; i < u.length; i += 2) if (Math.abs(u[i] - u[i - 2]) > 0.5) jumps++;
     }
+    expect(jumps).toBe(0);
   });
   it("region names with accents resolve", () => {
     const t = tl("map 51 10 zoom 5\nregion thüringen germany blue");

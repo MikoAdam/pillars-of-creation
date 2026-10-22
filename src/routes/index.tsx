@@ -60,7 +60,7 @@ function Studio() {
     const r = run(STARTER);
     return r.ok ? r.timeline : { title: "", themeId: "clean-modern", style: {}, duration: 1, objects: [], stmts: [], transitions: [], camera: { pos: { base: [960, 540], segs: [] }, zoom: { base: [1], segs: [] }, shakes: [] } };
   });
-  useEffect(() => { document.documentElement.dataset["ui"] = "clean"; }, []);
+  const [ready, setReady] = useState(false);
   const [previewOpacity, setPreviewOpacity] = useState<number | undefined>(undefined);
   const [error, setError] = useState<{ line: number; col: number; len: number; message: string } | null>(null);
   const [t, setT] = useState(0);
@@ -77,6 +77,7 @@ function Studio() {
   const runImmediate = useRef(false);
   const [voices, setVoices] = useState<AudioItem[]>([]);
   const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
+  const [voiceProgress, setVoiceProgress] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   useEffect(() => { void loadAudio().then(setVoices); }, []);
@@ -92,7 +93,8 @@ function Studio() {
     else if (saved.code !== null) hist.reset(saved.code);
     if (saved.media.length) setMedia([...BUILTIN_MEDIA, ...saved.media]);
     loaded.current = true;
-    loadFonts(THEMES).then(() => setAssets((a) => new Map(a)));
+    const readyTimer = setTimeout(() => setReady(true), 4000);
+    loadFonts(THEMES).then(() => setAssets((a) => new Map(a))).finally(() => { clearTimeout(readyTimer); setReady(true); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -126,9 +128,13 @@ function Studio() {
         if (need.size) void Promise.all([...need].map(loadGeo)).then(() => setGeoVersion((v) => v + 1)).catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
       } else {
         setError(r.error);
-        // a map script can fail before the outlines arrive: load them, then run again
-        if (!geoReady("countries") && /^\s*(include|map|country|region|attack|fly|pin|[\w .-]+:)/m.test(code))
-          void loadGeo("countries").then(() => setGeoVersion((v) => v + 1)).catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
+        // a map script can fail before the outlines arrive: load what it needs, then run again
+        const wanted = new Set<"countries" | "regions">();
+        if (/^\s*(include|map|country|region|attack|fly|pin|[\w .-]+:)/m.test(code)) wanted.add("countries");
+        if (/^\s*region\b/m.test(code)) { wanted.add("countries"); wanted.add("regions"); }
+        const missing = [...wanted].filter((k) => !geoReady(k));
+        if (missing.length)
+          void Promise.all(missing.map(loadGeo)).then(() => setGeoVersion((v) => v + 1)).catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
       }
     }, 300);
     return () => clearTimeout(id);
@@ -213,14 +219,24 @@ function Studio() {
   const makeSubtitlesFor = async (item: AudioItem) => {
     setVoiceStatus("Preparing speech recognition…");
     try {
-      const cues = await transcribe(item.blob, (p) =>
-        setVoiceStatus(p.stage === "download" ? `Downloading speech model (first time only)… ${Math.round(p.progress)}%` : "Listening and writing subtitles…"));
+      const cues = await transcribe(item.blob, (p) => {
+        if (p.stage === "download") {
+          setVoiceStatus(`Downloading the speech model (first time only): ${Math.round(p.progress)}%`);
+          setVoiceProgress(p.progress);
+        } else {
+          const heard = p.text ? ` · “${p.text.slice(0, 60)}”` : "";
+          setVoiceStatus(`Transcribing ${item.name}: ${Math.round(p.progress)}%${heard}`);
+          setVoiceProgress(p.progress);
+        }
+      });
+      setVoiceProgress(null);
       if (!cues.length) { setVoiceStatus("No speech found in this audio."); return; }
       let next = hist.codeRef.current.replace(/\n*# Subtitles \(made automatically[^\n]*\n(subtitle [^\n]*\n?)*/g, "\n");
       next = appendLines(useVoice(item.name, next), cuesToCode(cues, item.name));
       hand(next);
       setVoiceStatus(`Added ${cues.length} subtitle lines to the end of the script.`);
     } catch (e) {
+      setVoiceProgress(null);
       setVoiceStatus(`Couldn't make subtitles: ${(e as Error).message}`);
     }
   };
@@ -234,6 +250,14 @@ function Studio() {
       if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? hist.redo() : hist.undo(); return; }
       if (mod && e.key.toLowerCase() === "y") { e.preventDefault(); hist.redo(); return; }
       if (e.code === "Space") { e.preventDefault(); toggle(); return; }
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        const step = (e.shiftKey ? 1 : 1 / 30) * (e.key === "ArrowRight" ? 1 : -1);
+        seek(Math.min(timeline.duration, Math.max(0, tRef.current + step)));
+        return;
+      }
+      if (e.key === "Home") { e.preventDefault(); seek(0); return; }
+      if (e.key === "End") { e.preventDefault(); seek(timeline.duration); return; }
       if ((e.key === "Delete" || e.key === "Backspace") && !mod) {
         const o = timeline.objects.find((x) => x.id === selectedId);
         if (o && editable(o)) {
@@ -394,6 +418,12 @@ function Studio() {
 
   return (
     <main className="flex h-screen min-h-[640px] flex-col bg-background text-foreground">
+      {!ready && (
+        <div role="status" className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-[#f7f8fa] text-[#111827]" style={{ fontFamily: "system-ui, sans-serif" }}>
+          <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-[#2f6bff] border-t-transparent" />
+          <p className="text-sm">Loading the studio…</p>
+        </div>
+      )}
       {voice && <audio ref={audioRef} src={voice.url} preload="auto" hidden />}
       {exporting && <ExportDialog timeline={timeline} theme={theme} assets={assets} voice={voice?.blob} onClose={() => setExporting(false)} />}
       {mapEdit && (
@@ -473,6 +503,7 @@ function Studio() {
             voices={voices}
             active={timeline.voice}
             status={voiceStatus}
+            progress={voiceProgress}
             onUpload={(f) => void uploadVoice(f)}
             onUse={(n) => hand(useVoice(n))}
             onSubtitles={makeSubtitles}
