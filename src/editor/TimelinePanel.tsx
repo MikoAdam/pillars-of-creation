@@ -1,6 +1,20 @@
 import { useRef, useState, type PointerEvent as RPE } from "react";
 import type { Span } from "@/lang/parser";
-import type { Seg, Timeline, TObj } from "@/lang/timeline";
+import type { ObjKind, Seg, Timeline, TObj } from "@/lang/timeline";
+
+const NOUN: Partial<Record<ObjKind, string>> = {
+  photo: "Photo", count: "Counter", bars: "Bar chart", line: "Line chart", headline: "Headline", say: "Text",
+  arrow: "Arrow", circle: "Circle", box: "Box", highlight: "Highlight", map: "Map", pin: "Symbol", effect: "Symbol",
+  bubble: "Bubble", label: "Label", tag: "Tag", attack: "Attack", route: "Line", year: "Year", legend: "Legend",
+};
+
+function labelOf(o: TObj) {
+  if (o.locked && o.from) return `Map: ${o.from}`;
+  const noun = NOUN[o.kind];
+  if (!noun || o.id.replace(/\d+$/, "") !== o.kind) return o.id;
+  const text = typeof o.data?.text === "string" ? o.data.text : typeof o.data?.label === "string" ? o.data.label : "";
+  return text ? `${noun}: ${text.length > 24 ? text.slice(0, 23) + "…" : text}` : noun;
+}
 
 export interface StartInfo { base: number; delaySpan?: Span | undefined; hasDelay?: boolean | undefined; lineEnd: number }
 
@@ -103,7 +117,7 @@ export function TimelinePanel(p: Props) {
             className={`block w-full truncate px-2 text-left font-mono ${o.id === p.selectedId ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"}`}
             style={{ height: ROW_H }}
           >
-            {o.id}
+            {labelOf(o)}
           </button>
         ))}
       </div>

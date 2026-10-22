@@ -98,6 +98,9 @@ export interface TObj {
   exit?: Trans | undefined;
   /** local bounding box before transform [x, y, w, h] */
   box: [number, number, number, number];
+  /** came from an included map: edited in the map tool, not in the video script */
+  locked?: boolean;
+  from?: string | undefined;
 }
 
 export interface StmtInfo {

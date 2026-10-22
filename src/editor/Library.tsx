@@ -162,3 +162,14 @@ export function Inspector({ o, t, onFx, onRotate, onOpacity, onPreviewOpacity, o
     </div>
   );
 }
+
+export function MapLocked({ name, onEdit }: { name: string; onEdit: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-2 text-xs">
+      <span className="text-muted-foreground">
+        <span className="font-semibold text-foreground">Map: {name || "unnamed"}</span> plays from its own script. Change it in the map tool.
+      </span>
+      <button onClick={onEdit} disabled={!name} className="shrink-0 rounded-md bg-primary px-3 py-1 font-semibold text-primary-foreground disabled:opacity-50">Edit map</button>
+    </div>
+  );
+}

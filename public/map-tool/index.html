@@ -516,24 +516,29 @@ zoom: Germany"></textarea>
 <script src="js/context-menu.js?v=5"></script>
 <script src="js/app.js?v=13"></script>
 
-<!-- Bridge to the Pillars of Creation studio: hands the current script off via
-     localStorage, unmodified, as a one-shot key the studio consumes on load.
-     Does not touch anything else in this app. -->
+<!-- Bridge to the Pillars of Creation studio. Standalone: "Open in Studio" hands the script
+     over through localStorage. Embedded in the studio: the studio owns load and save, so the
+     button is hidden and the page answers its messages. -->
 <script>
 (function () {
     var btn = document.getElementById('sendToStudioBtn');
     if (!btn) return;
     var embedded = window.parent !== window;
     if (embedded) {
-        btn.textContent = 'Add to video \u2192';
-        btn.title = 'Add this map to the end of the video';
+        btn.style.display = 'none';
+        if (window.app && typeof window.app.dismissWelcome === 'function') window.app.dismissWelcome();
+        window.addEventListener('message', function (e) {
+            if (e.source !== window.parent || e.origin !== window.location.origin || !e.data) return;
+            var editor = document.getElementById('editor');
+            if (e.data.type === 'pnt-load-map') editor.value = e.data.code || '';
+            if (e.data.type === 'pnt-request-code') {
+                window.parent.postMessage({ type: 'pnt-map-code', code: editor.value }, window.location.origin);
+            }
+        });
+        return;
     }
     btn.addEventListener('click', function () {
         var code = document.getElementById('editor').value;
-        if (embedded) {
-            window.parent.postMessage({ type: 'pnt-map-script', code: code }, window.location.origin);
-            return;
-        }
         var header = 'project "Map from Classic Tool" theme clean_modern\nmap 20 10 zoom 2\n\n';
         try { localStorage.setItem('pnt:handoff', header + code); } catch (e) {}
         window.location.href = '/';

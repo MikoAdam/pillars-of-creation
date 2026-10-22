@@ -41,13 +41,28 @@ const OCEAN = "#c2d9ec";
 const LAND = "#f0ebe0";
 const BORDER = "#3a5c72";
 
+/** Ring x-coordinates (normalised, one world = 1) made continuous, then shifted by whole worlds to sit nearest the centre meridian cx. */
+export function unwrapRing(r: ArrayLike<number>, cx: number): number[] {
+  const out: number[] = [];
+  let off = 0;
+  for (let i = 0; i < r.length; i += 2) {
+    let lon = r[i] + off;
+    if (i > 0) {
+      const prev = out[out.length - 2];
+      while (lon - prev > 0.5) { off -= 1; lon -= 1; }
+      while (lon - prev < -0.5) { off += 1; lon += 1; }
+    }
+    out.push(lon, r[i + 1]);
+  }
+  const shift = Math.round(cx - out[0]);
+  return out.map((v, i) => (i % 2 === 0 ? v + shift : v));
+}
+
 function ringsPath(ctx: CanvasRenderingContext2D, f: GeoFeature, pr: Projection, cx: number) {
   for (const r of f.rings) {
-    // keep each ring on one side of the antimeridian
-    const d0 = r[0] - cx;
-    const shift = d0 > 0.5 ? -1 : d0 < -0.5 ? 1 : 0;
-    for (let i = 0; i < r.length; i += 2) {
-      const [x, y] = pr.norm(r[i] + shift, r[i + 1]);
+    const u = unwrapRing(r, cx);
+    for (let i = 0; i < u.length; i += 2) {
+      const [x, y] = pr.normRaw(u[i], u[i + 1]);
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.closePath();

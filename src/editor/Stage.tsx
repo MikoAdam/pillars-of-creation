@@ -71,7 +71,7 @@ export function Stage(p: Props) {
   };
 
   const selected = tl.objects.find((o) => o.id === p.selectedId && alive(o, p.t));
-  const mapObj = [...tl.objects].reverse().find((o) => o.kind === "map" && alive(o, p.t));
+  const mapObj = [...tl.objects].reverse().find((o) => o.kind === "map" && !o.locked && alive(o, p.t));
   const proj = mapObj ? makeProjection(mapCamAt(mapObj, p.t)) : null;
   /** attack handles in scene coords */
   const handles = selected?.kind === "attack" ? (() => {

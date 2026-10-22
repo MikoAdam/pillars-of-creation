@@ -20,8 +20,10 @@ export const COMMANDS = [
   "highlight", "voice", "subtitle", "rotate", "camera", "shake", "pulse", "wiggle", "wipe", "push", "whip", "blur",
   "map", "fly", "country", "region", "attack", "route", "pin", "bubble", "label", "tag", "year", "legend", "remove",
   "cinematic", "effect", "clear", "clearregions", "rename", "unrename",
-  "let", "repeat", "for", "end",
+  "let", "repeat", "for", "end", "include",
 ];
+
+export interface RunOptions { resolveMap?: (name: string) => string | undefined }
 
 export type RunResult =
   | { ok: true; timeline: Timeline }
@@ -66,17 +68,27 @@ interface Parsed {
   kw: Record<string, Arg[][]>; // keyword may repeat (mark)
 }
 
-export function run(src: string): RunResult {
+export function run(src: string, opts: RunOptions = {}): RunResult {
   try {
-    return { ok: true, timeline: interpret(src) };
+    return { ok: true, timeline: interpret(src, opts) };
   } catch (e) {
     if (e instanceof LangError) return { ok: false, error: { message: e.message, line: e.line, col: e.col, len: e.len } };
     return { ok: false, error: { message: String((e as Error)?.message ?? e), line: 0, col: 0, len: 1 } };
   }
 }
 
-export function interpret(src: string): Timeline {
+function relineStmts(stmts: Stmt[], line: number) {
+  for (const s of stmts) {
+    s.line = line;
+    if (s.kind === "repeat" || s.kind === "for") { s.endLine = line; relineStmts(s.body, line); }
+  }
+}
+
+export function interpret(src: string, opts: RunOptions = {}): Timeline {
   const prog = parse(src);
+  const includeStack: string[] = [];
+  let inInclude = 0;
+  let currentSource: string | undefined;
   const tl: Timeline = { title: "Untitled", themeId: "clean-modern", style: {}, duration: 0, objects: [], stmts: [], transitions: [], camera: emptyCamera() };
   const vars = new Map<string, number>();
   const objs = new Map<string, TObj>();
@@ -210,6 +222,7 @@ export function interpret(src: string): Timeline {
       id, kind, start, end: Infinity, origin, pos: track(pos), scale: track([sc]), opacity: track([opa]), rot: track([rot]),
       progress: track([1]), data, lines: [stmt.line], createLine: stmt.line, createLineEnd: stmt.ll.contentEnd,
       createSpans, box, base: curBase, enterFx: fx("enter"), exitFx: fx("exit"), pulses: [],
+      locked: inInclude > 0, from: currentSource,
     };
     const overG = kw1(p, "over");
     if (overG) {
@@ -585,6 +598,34 @@ export function interpret(src: string): Timeline {
         const w = src(1);
         const target = tg ? num(tg[1], "opacity", tg[0]) : w?.kind === "word" && w.name === "out" ? { v: 0 } : w?.kind === "word" && w.name === "in" ? { v: 1 } : err('fade needs "to 0..1", "in" or "out"', near);
         animate(o, "opacity", [target], p, s, start);
+        return;
+      }
+      case "include": {
+        const what = p.pos[0];
+        if (!(what?.kind === "word" && what.name === "map")) return err('Use: include map "Name"', near);
+        const nameArg = p.pos[1];
+        if (!nameArg || (nameArg.kind !== "str" && nameArg.kind !== "word")) return err('Name the map to include, e.g. include map "Balkans 1991"', near);
+        const name = nameArg.kind === "str" ? nameArg.v : nameArg.name;
+        if (includeStack.includes(name)) return err(`Map "${name}" includes itself`, near);
+        if (includeStack.length >= 3) return err("Maps can nest at most three levels deep", near);
+        const text = opts.resolveMap?.(name);
+        if (text === undefined) return err(`No map called "${name}". Create it with + Map`, near);
+        let stmts: Stmt[];
+        try { stmts = parse(text).stmts; } catch (e) {
+          if (e instanceof LangError) throw new LangError(`Map "${name}": ${e.message}`, s.line, 0, 1);
+          throw e;
+        }
+        relineStmts(stmts, s.line);
+        const outer = currentSource;
+        includeStack.push(name);
+        currentSource = name;
+        inInclude++;
+        try { exec(stmts, false); }
+        catch (e) {
+          if (e instanceof LangError) throw new LangError(`Map "${name}": ${e.message}`, s.line, 0, 1);
+          throw e;
+        } finally { includeStack.pop(); currentSource = outer; inInclude--; }
+        curMap = undefined;
         return;
       }
       default:

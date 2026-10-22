@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { run } from "./interpreter";
 import { anchorAt } from "./timeline";
 import { writeGeoEnd, writeGeoMove, writeMapCam } from "./writeback";
-import { setGeoData, findCountry, findRegion, makeProjection } from "@/render/geo";
+import { setGeoData, findCountry, findRegion, geoFeatures, makeProjection } from "@/render/geo";
+import { unwrapRing } from "@/render/scenes/map";
 
 beforeAll(() => {
   setGeoData("countries", JSON.parse(readFileSync("public/geo/countries.json", "utf8")));
@@ -97,6 +98,15 @@ describe("legacy map commands (colon form)", () => {
     expect(a2.data.head).toBe(2);
     expect(a2.progress.segs[0].t1 - a2.progress.segs[0].t0).toBe(0.5);
   });
+  it("outline rings stay continuous across the date line", () => {
+    const near = (a: number[], b: number[]) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i], 9));
+    near(unwrapRing([0.99, 0.5, 0.01, 0.5, 0.01, 0.6, 0.99, 0.5], 0), [-0.01, 0.5, 0.01, 0.5, 0.01, 0.6, -0.01, 0.5]);
+    near(unwrapRing([0.4, 0.2, 0.5, 0.2, 0.6, 0.3, 0.4, 0.2], 0.5), [0.4, 0.2, 0.5, 0.2, 0.6, 0.3, 0.4, 0.2]);
+    for (const f of geoFeatures("countries")) for (const r of f.rings) {
+      const u = unwrapRing(r, 0);
+      for (let i = 2; i < u.length; i += 2) expect(Math.abs(u[i] - u[i - 2])).toBeLessThanOrEqual(0.5);
+    }
+  });
   it("region names with accents resolve", () => {
     const t = tl("map 51 10 zoom 5\nregion thüringen germany blue");
     expect(t.objects.find((o) => o.kind === "map")!.data.fills.length).toBe(1);
@@ -165,3 +175,48 @@ describe("legacy map commands (colon form)", () => {
     expect(tl("map 45 15 zoom 4\natlantis: red\nzoom: atlantis").objects.find((o) => o.kind === "map")).toBeTruthy();
   });
 });
+
+describe("included maps", () => {
+  const maps: Record<string, string> = {
+    balkans: "map 45 15 zoom 4\ncountry poland blue fade\nwait 1s",
+    loop: 'include map "loop"',
+    broken: "country poland",
+  };
+  const resolveMap = (n: string) => maps[n];
+
+  it("plays an included map at the include line and locks its objects", () => {
+    const r = run('project "x"\nwait 1s\ninclude map "balkans"\nwait 1s', { resolveMap });
+    if (!r.ok) throw new Error(r.error.message);
+    const m = r.timeline.objects.find((o) => o.kind === "map")!;
+    expect(m.locked).toBe(true);
+    expect(m.from).toBe("balkans");
+    expect(m.lines).toContain(2);
+    expect(m.start).toBeCloseTo(1, 5);
+    expect(r.timeline.duration).toBeGreaterThan(2.9);
+  });
+
+  it("video commands are not locked", () => {
+    const r = run('project "x"\nmap 45 15 zoom 4\ncountry poland red', { resolveMap });
+    if (!r.ok) throw new Error(r.error.message);
+    expect(r.timeline.objects.find((o) => o.kind === "map")!.locked).toBeFalsy();
+  });
+
+  it("refuses a map that includes itself", () => {
+    const r = run('project "x"\ninclude map "loop"', { resolveMap });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.message).toContain("includes itself");
+  });
+
+  it("reports a missing map and errors inside an included map at the include line", () => {
+    const missing = run('project "x"\ninclude map "nope"', { resolveMap });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.error.message).toContain("No map called");
+    const broken = run('project "x"\nwait 1s\ninclude map "broken"', { resolveMap });
+    expect(broken.ok).toBe(false);
+    if (!broken.ok) {
+      expect(broken.error.message).toContain('Map "broken"');
+      expect(broken.error.line).toBe(2);
+    }
+  });
+});
+

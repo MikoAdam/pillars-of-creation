@@ -10,7 +10,8 @@ import { cuesToCode, transcribe } from "@/editor/transcribe";
 import { run } from "@/lang/interpreter";
 import { activeLinesAt, mapCamAt, styleValues, type Timeline, type TObj } from "@/lang/timeline";
 import { insertAtTime, removeFx, resetStyle, setStyle, writeFx, writeMove, writeOver, writeProp, writeScale, writeStart, writeGeoMove, writeGeoEnd, writeBend, writeMapCam, writeDelete, writeReverse, writeColor } from "@/lang/writeback";
-import { Library, Inspector } from "@/editor/Library";
+import { Library, Inspector, MapLocked } from "@/editor/Library";
+import { getMapCode, listMaps, saveMap, uniqueMapName } from "@/editor/mapStore";
 import { applyStyle, getTheme, THEMES } from "@/render/theme";
 import { StylePanel } from "@/editor/StylePanel";
 import { loadFonts } from "@/render/assets";
@@ -111,11 +112,12 @@ function Studio() {
   // effect double-invocation — mount, cleanup, mount again — can't cancel the immediate run and
   // silently fall back to the slow path: the cleanup only ever cancels a run that hasn't fired yet.)
   const [geoVersion, setGeoVersion] = useState(0);
+  const [mapsVersion, setMapsVersion] = useState(0);
   useEffect(() => {
     const delay = runImmediate.current ? 0 : 300;
     const id = setTimeout(() => {
       runImmediate.current = false;
-      const r = run(code);
+      const r = run(code, { resolveMap: getMapCode });
       if (r.ok) {
         setTimeline(r.timeline); setError(null);
         // map outlines load once in the background, then the script runs again
@@ -125,12 +127,12 @@ function Studio() {
       } else {
         setError(r.error);
         // a map script can fail before the outlines arrive: load them, then run again
-        if (!geoReady("countries") && /^\s*(map|country|region|attack|fly|pin|[\w .-]+:)/m.test(code))
+        if (!geoReady("countries") && /^\s*(include|map|country|region|attack|fly|pin|[\w .-]+:)/m.test(code))
           void loadGeo("countries").then(() => setGeoVersion((v) => v + 1)).catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
       }
     }, 300);
     return () => clearTimeout(id);
-  }, [code, geoVersion]);
+  }, [code, geoVersion, mapsVersion]);
   const [promptCopied, setPromptCopied] = useState(false);
   const copyAiPrompt = async () => {
     try {
@@ -234,7 +236,7 @@ function Studio() {
       if (e.code === "Space") { e.preventDefault(); toggle(); return; }
       if ((e.key === "Delete" || e.key === "Backspace") && !mod) {
         const o = timeline.objects.find((x) => x.id === selectedId);
-        if (o) {
+        if (o && editable(o)) {
           e.preventDefault();
           const next = writeDelete(hist.codeRef.current, o);
           if (next !== hist.codeRef.current) { runImmediate.current = true; hist.setHand(next); }
@@ -244,7 +246,7 @@ function Studio() {
       }
       if (e.key.toLowerCase() === "r" && !mod) {
         const o = timeline.objects.find((x) => x.id === selectedId);
-        if (o && (o.kind === "attack" || o.kind === "route")) {
+        if (o && editable(o) && (o.kind === "attack" || o.kind === "route")) {
           const next = writeReverse(hist.codeRef.current, o);
           if (next !== hist.codeRef.current) { runImmediate.current = true; hist.setHand(next); }
           return;
@@ -262,44 +264,82 @@ function Studio() {
   // hand actions: all go through code, and re-run on the next tick (not debounced — see the run effect)
   const hand = (next: string) => { if (next !== hist.codeRef.current) { runImmediate.current = true; hist.setHand(next); } };
   const loadScript = (code: string) => { setPlaying(false); seek(0); hand(code); };
-  const [mapOpen, setMapOpen] = useState(false);
-  const mapFrame = useRef<HTMLIFrameElement>(null);
-  const addMapToVideo = (mapCode: string) => {
-    if (!mapCode.trim()) return setNotice("The map is empty: add some commands in the map tool first.");
-    setPlaying(false);
-    seek(0);
-    hand(`${hist.codeRef.current.trimEnd()}\n\n# --- Map scene (from the map tool)\nmap 20 10 zoom 2\n${mapCode.trim()}\n`);
-    setMapOpen(false);
-    setNotice("Map added at the end of the video. Press Play to see it.");
+  const editable = (o: TObj) => {
+    if (!o.locked) return true;
+    setNotice(`"${o.from ?? "This map"}" plays from its own script. Edit it in the map tool.`);
+    return false;
   };
-  const addMapRef = useRef(addMapToVideo);
-  addMapRef.current = addMapToVideo;
+  const [mapEdit, setMapEdit] = useState<{ name: string; isNew: boolean } | null>(null);
+  const mapFrame = useRef<HTMLIFrameElement>(null);
+  const pendingMapCode = useRef<((code: string) => void) | null>(null);
+  const openMap = (name?: string) => {
+    if (!name) return;
+    setPlaying(false);
+    setMapEdit({ name, isNew: false });
+  };
+  const saveMapFlow = (addToVideo: boolean) => {
+    if (!mapEdit) return;
+    const { name, isNew } = mapEdit;
+    pendingMapCode.current = (code) => {
+      if (!code.trim()) return setNotice("The map is empty: add some commands in the map tool first.");
+      if (!name.trim()) return setNotice("Give the map a name first.");
+      if (isNew && listMaps().includes(name)) return setNotice(`A map called "${name}" already exists. Choose another name.`);
+      if (!saveMap(name, code)) return setNotice("Browser storage is full: the map was not saved.");
+      setMapsVersion((v) => v + 1);
+      if (addToVideo) {
+        const line = `include map "${name}"`;
+        setPlaying(false);
+        seek(0);
+        if (!hist.codeRef.current.includes(line)) hand(`${hist.codeRef.current.trimEnd()}\n\n${line}\n`);
+      }
+      setMapEdit(null);
+      setNotice(addToVideo ? `"${name}" is in the video. Press Play to see it.` : `"${name}" saved.`);
+    };
+    mapFrame.current?.contentWindow?.postMessage({ type: "pnt-request-code" }, window.location.origin);
+  };
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       const d = e.data as { type?: unknown; code?: unknown } | null;
       if (e.origin !== window.location.origin || e.source !== mapFrame.current?.contentWindow) return;
-      if (d?.type !== "pnt-map-script" || typeof d.code !== "string") return;
-      addMapRef.current(d.code);
+      if (d?.type !== "pnt-map-code" || typeof d.code !== "string") return;
+      const next = pendingMapCode.current;
+      pendingMapCode.current = null;
+      next?.(d.code);
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, []);
   const activeLines = useMemo(() => activeLinesAt(timeline, t), [timeline, t]);
-  const onMove = (o: TObj, x: number, y: number) =>
+  const onMove = (o: TObj, x: number, y: number) => {
+    if (!editable(o)) return;
     hand(o.data?.geo || o.kind === "map" ? writeGeoMove(hist.codeRef.current, timeline, o, t, x, y) : writeMove(hist.codeRef.current, timeline, o, t, x, y));
-  const onScale = (o: TObj, s: number) =>
+  };
+  const onScale = (o: TObj, s: number) => {
+    if (!editable(o)) return;
     hand(o.kind === "map" ? writeMapCam(hist.codeRef.current, timeline, o, t, "zoom", [Math.min(14, Math.max(0.3, mapCamAt(o, t).zoom + Math.log2(s)))]) : writeScale(hist.codeRef.current, timeline, o, t, s));
-  const onGeoHandle = (o: TObj, w: "a" | "b" | "bend", x: number, y: number) =>
+  };
+  const onGeoHandle = (o: TObj, w: "a" | "b" | "bend", x: number, y: number) => {
+    if (!editable(o)) return;
     hand(w === "bend" ? writeBend(hist.codeRef.current, o, t, x, y) : writeGeoEnd(hist.codeRef.current, o, t, w, x, y));
+  };
   const onInsert = (cmd: string) => hand(insertAtTime(hist.codeRef.current, timeline, t, cmd).code);
   const onInsertCenter = (cmd: string) => {
     onInsert(cmd.replace("{x2}", "1220").replace("{y2}", "400").replace("{x}", "960").replace("{y}", "540"));
   };
-  const onRotate = (o: TObj, deg: number) =>
+  const onRotate = (o: TObj, deg: number) => {
+    if (!editable(o)) return;
     hand(o.kind === "map" ? writeMapCam(hist.codeRef.current, timeline, o, t, "turn", [Math.round(mapCamAt(o, t).turn - deg)]) : writeProp(hist.codeRef.current, timeline, o, t, "rot", deg));
-  const onOpacity = (o: TObj, v: number) => hand(writeProp(hist.codeRef.current, timeline, o, t, "opacity", v));
-  const onColor = (o: TObj, c: string) => hand(writeColor(hist.codeRef.current, o, c));
+  };
+  const onOpacity = (o: TObj, v: number) => {
+    if (!editable(o)) return;
+    hand(writeProp(hist.codeRef.current, timeline, o, t, "opacity", v));
+  };
+  const onColor = (o: TObj, c: string) => {
+    if (!editable(o)) return;
+    hand(writeColor(hist.codeRef.current, o, c));
+  };
   const onFx = (o: TObj, f: FxDrop) => {
+    if (!editable(o)) return;
     const c = hist.codeRef.current;
     if (f.kind === "pulse" || f.kind === "wiggle") return onInsert(`${f.kind} ${o.id} over 0.6s`);
     hand(writeFx(c, o, f.kind, f.style ?? "pop"));
@@ -356,16 +396,31 @@ function Studio() {
     <main className="flex h-screen min-h-[640px] flex-col bg-background text-foreground">
       {voice && <audio ref={audioRef} src={voice.url} preload="auto" hidden />}
       {exporting && <ExportDialog timeline={timeline} theme={theme} assets={assets} voice={voice?.blob} onClose={() => setExporting(false)} />}
-      {mapOpen && (
+      {mapEdit && (
         <div className="fixed inset-0 z-50 flex flex-col bg-background">
-          <div className="flex h-11 shrink-0 items-center justify-between gap-4 border-b border-border px-4">
-            <div className="flex min-w-0 items-baseline gap-3">
-              <span className="font-display text-lg font-semibold tracking-tight">Map</span>
-              <span className="truncate text-xs text-muted-foreground">A sub-project: build it here, then press Add to video in its toolbar</span>
+          <div className="flex h-11 shrink-0 items-center gap-3 border-b border-border px-4">
+            <span className="font-display text-lg font-semibold tracking-tight">Map</span>
+            <input
+              value={mapEdit.name}
+              disabled={!mapEdit.isNew}
+              onChange={(e) => setMapEdit({ ...mapEdit, name: e.target.value.replace(/"/g, "'") })}
+              title="The name the video script uses"
+              className="w-56 rounded-md border border-border bg-secondary px-2 py-0.5 text-sm text-foreground disabled:opacity-60"
+            />
+            <span className="min-w-0 truncate text-xs text-muted-foreground">Build the map here. The video plays it from its script and can't change it.</span>
+            <div className="ml-auto flex shrink-0 items-center gap-2 text-sm">
+              <button onClick={() => saveMapFlow(false)} className="rounded-md border border-border bg-secondary px-3 py-1 text-foreground hover:bg-accent">Save</button>
+              <button onClick={() => saveMapFlow(true)} className="rounded-md bg-primary px-3 py-1 font-semibold text-primary-foreground">Save and add to video</button>
+              <button onClick={() => setMapEdit(null)} className="rounded-md border border-border px-3 py-1 text-muted-foreground hover:text-foreground">Close</button>
             </div>
-            <button onClick={() => setMapOpen(false)} className="shrink-0 rounded-md border border-border bg-secondary px-3 py-1 text-sm text-foreground hover:bg-accent">Back to video</button>
           </div>
-          <iframe ref={mapFrame} src="/map-tool/index.html" title="Map tool" className="min-h-0 flex-1 border-0" />
+          <iframe
+            ref={mapFrame}
+            src="/map-tool/index.html?embed=1"
+            title="Map tool"
+            onLoad={() => mapFrame.current?.contentWindow?.postMessage({ type: "pnt-load-map", code: getMapCode(mapEdit.name) ?? "" }, window.location.origin)}
+            className="min-h-0 flex-1 border-0"
+          />
         </div>
       )}
       <header className="flex h-11 shrink-0 items-center justify-between gap-4 border-b border-border px-4">
@@ -402,7 +457,7 @@ function Studio() {
           />
           <button onClick={() => { setPlaying(false); setExporting(true); }} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 font-semibold text-primary-foreground"><Film className="h-3.5 w-3.5" /> Export</button>
           <Link to="/preview" className="text-muted-foreground hover:text-foreground">Scene preview</Link>
-          <button onClick={() => { setPlaying(false); setMapOpen(true); }} title="Open the map tool as a sub-project, build a map, then add it to this video" className="rounded-md border border-border bg-secondary px-2.5 py-1 text-foreground hover:bg-accent">+ Map</button>
+          <button onClick={() => { setPlaying(false); setMapEdit({ name: uniqueMapName("New map"), isNew: true }); }} title="Build a map in the map tool. The video plays it from its script." className="rounded-md border border-border bg-secondary px-2.5 py-1 text-foreground hover:bg-accent">+ Map</button>
         </div>
       </header>
 
@@ -496,12 +551,17 @@ function Studio() {
                   <input type="range" min={0} max={total} step={1 / 30} value={Math.min(t, total)} onChange={(e) => scrub(Number(e.target.value))} className="flex-1 accent-primary" />
                   <span className="w-28 text-right font-mono text-xs tabular-nums text-muted-foreground">{fmt(t)} / {fmt(total)}</span>
                 </div>
-                {selectedObj?.kind === "map" && (
+                {selectedObj?.locked && (
+                  <div className="mt-2">
+                    <MapLocked name={selectedObj.from ?? ""} onEdit={() => openMap(selectedObj.from)} />
+                  </div>
+                )}
+                {selectedObj?.kind === "map" && !selectedObj.locked && (
                   <div className="mt-2">
                     <MapInspector o={selectedObj} t={t} onSet={(k, v) => hand(writeMapCam(hist.codeRef.current, timeline, selectedObj, t, k, [v]))} />
                   </div>
                 )}
-                {selectedObj && selectedObj.kind !== "map" && (
+                {selectedObj && !selectedObj.locked && selectedObj.kind !== "map" && (
                   <div className="mt-2">
                     <Inspector
                       o={selectedObj}

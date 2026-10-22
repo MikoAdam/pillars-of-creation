@@ -279,14 +279,18 @@ export function makeProjection(cam: MapCam) {
   const cb = Math.cos(br), sb = Math.sin(br);
   const tp = (Math.min(70, Math.max(0, cam.tilt)) * Math.PI) / 180;
   const ct = Math.cos(tp), st = Math.sin(tp);
-  const norm = (x: number, y: number): [number, number] => {
-    let dx = (x - cx) * size, dy = (y - cy) * size;
-    // wrap around the antimeridian to the nearest copy
-    if (dx > size / 2) dx -= size; else if (dx < -size / 2) dx += size;
+  const normRaw = (x: number, y: number): [number, number] => {
+    const dx = (x - cx) * size, dy = (y - cy) * size;
     const rx = dx * cb - dy * sb, ry = dx * sb + dy * cb;
     if (tp === 0) return [960 + rx, 540 + ry];
     const k = PERSPECTIVE / Math.max(80, PERSPECTIVE - ry * st);
     return [960 + rx * k, 540 + ry * ct * k];
+  };
+  // wrap around the antimeridian to the nearest copy
+  const norm = (x: number, y: number): [number, number] => {
+    let u = x;
+    if ((u - cx) * size > size / 2) u -= 1; else if ((u - cx) * size < -size / 2) u += 1;
+    return normRaw(u, y);
   };
   const invert = (sx: number, sy: number): [number, number] => {
     let rx = sx - 960, ry = sy - 540;
@@ -301,6 +305,7 @@ export function makeProjection(cam: MapCam) {
   return {
     size,
     norm,
+    normRaw,
     point: (lng: number, lat: number) => { const [x, y] = toNorm(lng, lat); return norm(x, y); },
     /** screen → [lng, lat] */
     unproject: (sx: number, sy: number) => { const [x, y] = invert(sx, sy); return fromNorm(x, y); },
