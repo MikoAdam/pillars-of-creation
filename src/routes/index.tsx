@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video, RotateCcw, Film, Globe2 } from "lucide-react";
+import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video, RotateCcw, Film, Globe2, Moon, Sun } from "lucide-react";
 import { featureAt, geoReady, loadGeo, toNorm } from "@/render/geo";
 import { MapInspector } from "@/editor/MapPanel";
 import { ExportDialog } from "@/editor/ExportDialog";
@@ -340,6 +340,7 @@ function Studio() {
             onReset={(k) => hand(resetStyle(hist.codeRef.current, timeline, k))}
           />
           <button onClick={() => { setPlaying(false); setExporting(true); }} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 font-semibold text-primary-foreground"><Film className="h-3.5 w-3.5" /> Export</button>
+          <ThemeToggle />
           <Link to="/preview" className="text-muted-foreground hover:text-foreground">Scene preview</Link>
         </div>
       </header>
@@ -467,5 +468,21 @@ function Studio() {
         </section>
       </div>
     </main>
+  );
+}
+
+/** Studio light/dark switch; dark by default, remembered in this browser. */
+function ThemeToggle() {
+  const [dark, setDark] = useState(true);
+  useEffect(() => { setDark(localStorage.getItem("studio-mode") !== "light"); }, []);
+  useEffect(() => {
+    if (dark) document.documentElement.removeAttribute("data-ui");
+    else document.documentElement.setAttribute("data-ui", "clean");
+    localStorage.setItem("studio-mode", dark ? "dark" : "light");
+  }, [dark]);
+  return (
+    <button onClick={() => setDark((d) => !d)} title={dark ? "Switch to light mode" : "Switch to dark mode"} aria-label="Toggle dark mode" className="rounded-md border border-border bg-secondary p-1.5 text-foreground hover:bg-accent">
+      {dark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+    </button>
   );
 }
