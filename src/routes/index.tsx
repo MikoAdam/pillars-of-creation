@@ -58,7 +58,6 @@ function Studio() {
     const r = run(SAMPLE_CODE);
     return r.ok ? r.timeline : { title: "", themeId: "clean-modern", style: {}, duration: 1, objects: [], stmts: [], transitions: [], camera: { pos: { base: [960, 540], segs: [] }, zoom: { base: [1], segs: [] }, shakes: [] } };
   });
-  useEffect(() => { document.documentElement.dataset["ui"] = "clean"; }, []);
   const [previewOpacity, setPreviewOpacity] = useState<number | undefined>(undefined);
   const [error, setError] = useState<{ line: number; col: number; len: number; message: string } | null>(null);
   const [t, setT] = useState(0);
