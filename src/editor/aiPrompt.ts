@@ -87,7 +87,6 @@ scale name 1.5 over 0.5s
 rotate name 45 over 0.5s
 pulse name over 0.6s
 wiggle name over 0.8s
-shake 18 over 0.5s
 camera zoom 1.3 over 3s ease smooth
 camera to 960 540 zoom 1 over 1.5s ease out
 wait 3s

@@ -30,7 +30,6 @@ const CAMERA: { label: string; cmd: string }[] = [
   { label: "Snap zoom", cmd: "camera zoom 1.6 over 0.4s ease snap" },
   { label: "Pull out", cmd: "camera to 960 540 zoom 1 over 1.5s ease out" },
   { label: "Drift left", cmd: "camera to 860 540 over 4s ease linear" },
-  { label: "Shake", cmd: "shake 24 over 0.5s" },
 ];
 
 const nice = (s: string) => s.replace("_", " ").replace(/^\w/, (c) => c.toUpperCase());
