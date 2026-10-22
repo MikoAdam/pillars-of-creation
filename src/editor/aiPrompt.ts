@@ -126,3 +126,9 @@ ${EXAMPLE_SCRIPT}`;
 
 /** The reference an LLM needs to write a script the editor accepts. */
 export const AI_PROMPT = REFERENCE;
+
+/** The script in an AI reply: the first fenced code block if there is one, otherwise the whole reply. */
+export function extractScript(reply: string): string {
+  const fence = /```[a-zA-Z]*[ \t]*\r?\n([\s\S]*?)```/.exec(reply);
+  return (fence ? fence[1]! : reply).trim();
+}

@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { run } from "@/lang/interpreter";
 import { setGeoData } from "@/render/geo";
-import { AI_PROMPT, EXAMPLE_MAP_SCRIPT, EXAMPLE_SCRIPT } from "./aiPrompt";
+import { AI_PROMPT, EXAMPLE_MAP_SCRIPT, EXAMPLE_SCRIPT, extractScript } from "./aiPrompt";
 
 const SCENE_SMOKE = `project "Smoke" theme clean_modern
 style radius 12
@@ -91,5 +91,17 @@ remove arrows
     expect(AI_PROMPT).toContain(EXAMPLE_SCRIPT.trim());
     expect(AI_PROMPT).toContain("ONE code block");
     expect(AI_PROMPT).toContain("goldenrod");
+  });
+});
+
+describe("extracting a script from a reply", () => {
+  it("takes the first fenced block", () => {
+    expect(extractScript('Here you go:\n```\nproject "A"\nwait 1s\n```\nThanks')).toBe('project "A"\nwait 1s');
+  });
+  it("takes a language-tagged block", () => {
+    expect(extractScript('```text\nwait 2s\n```')).toBe("wait 2s");
+  });
+  it("uses the whole reply when there is no block", () => {
+    expect(extractScript("  wait 3s  ")).toBe("wait 3s");
   });
 });

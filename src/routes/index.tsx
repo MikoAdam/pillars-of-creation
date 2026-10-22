@@ -12,6 +12,7 @@ import { activeLinesAt, mapCamAt, styleValues, type Timeline, type TObj } from "
 import { insertAtTime, removeFx, resetStyle, setStyle, writeFx, writeMove, writeOver, writeProp, writeScale, writeStart, writeGeoMove, writeGeoEnd, writeBend, writeMapCam, writeDelete, writeReverse, writeColor } from "@/lang/writeback";
 import { Library, Inspector, MapLocked } from "@/editor/Library";
 import { getMapCode, listMaps, saveMap, uniqueMapName } from "@/editor/mapStore";
+import { PasteScript } from "@/editor/PasteScript";
 import { applyStyle, getTheme, THEMES } from "@/render/theme";
 import { StylePanel } from "@/editor/StylePanel";
 import { loadFonts } from "@/render/assets";
@@ -143,6 +144,7 @@ function Studio() {
     return () => clearTimeout(id);
   }, [code, geoVersion, mapsVersion]);
   const [promptCopied, setPromptCopied] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
   const copyAiPrompt = async () => {
     try {
       await navigator.clipboard.writeText(AI_PROMPT);
@@ -434,6 +436,13 @@ function Studio() {
       )}
       {voice && <audio ref={audioRef} src={voice.url} preload="auto" hidden />}
       {exporting && <ExportDialog timeline={timeline} theme={theme} assets={assets} voice={voice?.blob} onClose={() => setExporting(false)} />}
+      {pasteOpen && (
+        <PasteScript
+          resolveMap={getMapCode}
+          onClose={() => setPasteOpen(false)}
+          onLoad={(code) => { setPasteOpen(false); loadScript(code); }}
+        />
+      )}
       {mapEdit && (
         <div className="fixed inset-0 z-50 flex flex-col bg-background">
           <div className="flex h-11 shrink-0 items-center gap-3 border-b border-border px-4">
@@ -486,6 +495,7 @@ function Studio() {
           >
             {promptCopied ? "Copied" : "Copy AI prompt"}
           </button>
+          <button onClick={() => setPasteOpen(true)} title="Paste a script an AI wrote, check it, and load it" className="rounded-md border border-border bg-secondary px-2.5 py-1 text-foreground hover:bg-accent">Paste from AI</button>
           <StylePanel
             base={baseTheme}
             theme={theme}
