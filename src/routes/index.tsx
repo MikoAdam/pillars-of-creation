@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video, RotateCcw, Film } from "lucide-react";
+import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video, RotateCcw, Film, Moon, Sun } from "lucide-react";
 import { geoReady, loadGeo } from "@/render/geo";
 import { MapInspector } from "@/editor/MapPanel";
 import { ExportDialog } from "@/editor/ExportDialog";
@@ -479,6 +479,7 @@ function Studio() {
           {notice && <button onClick={() => setNotice(null)} className="max-w-[46ch] truncate text-primary">{notice} ✕</button>}
           <button onClick={hist.undo} title="Undo (Ctrl+Z)" className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"><Undo2 className="h-4 w-4" /></button>
           <button onClick={hist.redo} title="Redo (Ctrl+Shift+Z)" className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"><Redo2 className="h-4 w-4" /></button>
+          <ThemeToggle />
           <select
             value=""
             onChange={(e) => { const d = DEMOS.find((x) => x.id === e.target.value); if (d) loadDemo(d); }}
@@ -640,5 +641,21 @@ function Studio() {
         </section>
       </div>
     </main>
+  );
+}
+
+/** Studio light/dark switch; dark by default, remembered in this browser. */
+function ThemeToggle() {
+  const [dark, setDark] = useState(true);
+  useEffect(() => { setDark(localStorage.getItem("studio-mode") !== "light"); }, []);
+  useEffect(() => {
+    if (dark) document.documentElement.removeAttribute("data-ui");
+    else document.documentElement.setAttribute("data-ui", "clean");
+    localStorage.setItem("studio-mode", dark ? "dark" : "light");
+  }, [dark]);
+  return (
+    <button onClick={() => setDark((d) => !d)} title={dark ? "Switch to light mode" : "Switch to dark mode"} aria-label="Toggle dark mode" className="rounded-md border border-border bg-secondary p-1.5 text-foreground hover:bg-accent">
+      {dark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+    </button>
   );
 }
