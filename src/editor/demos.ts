@@ -1,77 +1,98 @@
-export interface Demo { id: string; name: string; code: string }
+export interface Demo {
+  id: string;
+  name: string;
+  code: string;
+  /** Maps the script includes, stored under these names when the demo is loaded. */
+  maps?: Record<string, string>;
+}
+
+const EU_MAP = "EU enlargement, 2004 (demo)";
 
 /** Short starting points. Each line is a plain command: change a word or number and the video changes. */
 export const DEMOS: Demo[] = [
   {
-    id: "nebula",
-    name: "Star formation: photo and one number",
-    code: `project "Star Formation in the Eagle Nebula" theme clean_modern
+    id: "stars",
+    name: "Why stars shine: photo and a counter",
+    code: `project "Why stars shine" theme clean_modern
 
-# The photo runs for the first few seconds. Change the caption to change the story.
-show photo @pillars as nebula enter fade
-zoom nebula 1.0 to 1.12 over 6s ease smooth
-caption nebula "The Pillars of Creation, Eagle Nebula (M16)"
-wait 4s
-
-# One figure, with its source. Edit the number or the label to adjust.
-count 6500 suffix " light years" label "Distance from Earth" over 2.5s as dist enter rise
-source dist "NASA, Hubble Space Telescope" https://science.nasa.gov
+show photo @pillars as pillars enter fade
+zoom pillars 1.0 to 1.1 over 6s ease smooth
+caption pillars "The Pillars of Creation, Eagle Nebula (M16)"
 wait 4s
 crossfade 0.8
 
-# Closing line. *Words in asterisks* are highlighted.
-say "Stars are born *inside clouds of dust and gas*" beat 0.4s enter blur
-wait 3s
-`,
-  },
-  {
-    id: "webb",
-    name: "Webb's mirror: photo and counters",
-    code: `project "Inside the James Webb Space Telescope" theme clean_modern
-
-show photo @telescope as webb enter fade
-zoom webb 1.0 to 1.1 over 5s ease smooth
-caption webb "Webb's primary mirror: 18 gold-coated segments"
+say "Stars are made mostly of *hydrogen*" at 960 540 beat 0.4s enter pop
+wait 2.5s
+count 4 label "hydrogen nuclei fuse into one helium nucleus" over 2s as fuse enter rise
+source fuse "Stellar fusion, standard astrophysics" https://science.nasa.gov
 wait 4s
 wipe 0.6
 
-# Each counter is a separate scene. Swap the number or label to reuse the pattern.
-count 6.5 suffix " m" label "Diameter of the primary mirror" over 2s as mirror enter pop
-source mirror "NASA" https://www.nasa.gov/webb
-wait 3s
-push 0.6
-
-count 18 label "Hexagonal segments, aligned after launch" over 2s as segs enter rise
-wait 3.5s
-push 0.6
-
-say "Light from the *first galaxies* took more than 13 billion years to reach us" beat 0.4s enter blur
+say "That fusion releases the light you can *see* from Earth" beat 0.4s enter blur
 wait 3s
 `,
   },
   {
-    id: "coffee",
-    name: "Coffee prices: chart and an unverified figure",
-    code: `project "Why Coffee Got Expensive" theme clean_modern
+    id: "eu",
+    name: "EU enlargement, 2004: a map",
+    code: `project "The 2004 enlargement of the EU" theme clean_modern
 
-headline "Coffee prices climbed as harvests shrank" paper "THE MORNING LEDGER" body "A drought in one growing region can move prices worldwide." mark "shrank" over 3s enter drop
-wait 4s
+say "On 1 May 2004, *ten countries* joined the European Union" at 960 540 beat 0.4s enter blur exit blur
+wait 3.5s
+crossfade 0.8
+
+# The map is stored separately and plays from its own script. Edit it with "Edit map".
+include map "${EU_MAP}"
+wait 1s
+crossfade 0.8
+
+say "Colours show the groups of countries, nothing else" beat 0.35s enter rise
+wait 3s
+`,
+    maps: {
+      [EU_MAP]: `map 50 12 zoom 3.6 as europe
+year "2004" highlight
+wait 1s
+
+country poland blue fade
+country czechia blue fade
+country slovakia blue fade
+country hungary blue fade
+country slovenia blue fade
+wait 1.5s
+
+country estonia green fade
+country latvia green fade
+country lithuania green fade
+wait 1.5s
+
+country cyprus orange fade
+country malta orange fade
+wait 1.5s
+
+legend "Central Europe" blue
+legend "Baltic states" green
+legend "Mediterranean islands" orange
+wait 2s
+`,
+    },
+  },
+  {
+    id: "week",
+    name: "A week in hours: an illustrative chart",
+    code: `project "Where a week goes (illustrative)" theme clean_modern
+
+headline "A week has 168 hours. Where do yours go?" paper "THE DAILY LEDGER" body "These numbers are illustrative. Replace them with your own before you publish." mark "168 hours" over 3s enter drop
+wait 4.5s
 push 0.6
 
-# These numbers are illustrative. "unverified" puts a note on screen until a real source is added.
-line "Arabica price, $ per lb (illustrative)" "2019" 1.0 "2020" 1.1 "2021" 1.9 "2022" 2.2 "2023" 1.7 over 3s as price enter blur
-unverified price
-camera to 1300 420 zoom 1.4 over 1s ease snap delay 3s
-wait 4s
+# "unverified" puts a note on screen until the numbers are checked.
+bars "Hours per week (illustrative)" "Sleep" 56 "Work" 40 "Commute" 5 "Everything else" 67 over 3s as week enter rise
+unverified week
+wait 4.5s
 whip 0.5
 
-count 70 suffix "%" label "Share of beans from five countries (illustrative)" over 2s as share enter pop
-unverified share
-wiggle share over 0.8s delay 2s
-wait 3.5s
-wipe 0.6
-
-say "Your morning cup is a *climate* story" beat 0.35s enter rise
+say "Change any number and the chart follows" beat 0.35s enter rise
 wait 3s
 `,
   },

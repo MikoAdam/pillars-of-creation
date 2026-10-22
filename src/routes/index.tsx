@@ -21,17 +21,17 @@ import { Stage, type FxDrop, type Tool } from "@/editor/Stage";
 import { TimelinePanel } from "@/editor/TimelinePanel";
 import { MediaBin } from "@/editor/MediaBin";
 import { AI_PROMPT } from "@/editor/aiPrompt";
-import { DEMOS } from "@/editor/demos";
+import { DEMOS, type Demo } from "@/editor/demos";
 import { useHistory } from "@/editor/useHistory";
 import { BUILTIN_MEDIA, fileToDataUrl, loadSaved, saveCode, saveMedia, takeHandoff, uniqueName, type MediaItem } from "@/editor/assets";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Paint and Turtle — Pillars of Creation" },
-      { name: "description", content: "Make explainer videos by painting on a canvas and writing turtle-style code, both at once." },
-      { property: "og:title", content: "Paint and Turtle — Pillars of Creation" },
-      { property: "og:description", content: "Paint on the canvas or write code: every hand action rewrites the script." },
+      { title: "Pillars of Creation Studio" },
+      { name: "description", content: "Write a script, adjust it by hand, export an explainer video. Every change on the canvas rewrites the script." },
+      { property: "og:title", content: "Pillars of Creation Studio" },
+      { property: "og:description", content: "Every change on the canvas rewrites the script." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -127,14 +127,17 @@ function Studio() {
         if (r.timeline.objects.some((o) => o.kind === "map") && !geoReady("countries")) need.add("countries");
         if (need.size) void Promise.all([...need].map(loadGeo)).then(() => setGeoVersion((v) => v + 1)).catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
       } else {
-        setError(r.error);
-        // a map script can fail before the outlines arrive: load what it needs, then run again
+        // a map script can fail before the outlines arrive: say so, load what it needs, then run again
         const wanted = new Set<"countries" | "regions">();
         if (/^\s*(include|map|country|region|attack|fly|pin|[\w .-]+:)/m.test(code)) wanted.add("countries");
         if (/^\s*region\b/m.test(code)) { wanted.add("countries"); wanted.add("regions"); }
         const missing = [...wanted].filter((k) => !geoReady(k));
-        if (missing.length)
-          void Promise.all(missing.map(loadGeo)).then(() => setGeoVersion((v) => v + 1)).catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
+        if (missing.length) {
+          setNotice("Loading map outlines…");
+          void Promise.all(missing.map(loadGeo))
+            .then(() => { setNotice(null); setGeoVersion((v) => v + 1); })
+            .catch(() => setNotice("Couldn't load the map outlines. Check your connection and reload."));
+        } else setError(r.error);
       }
     }, 300);
     return () => clearTimeout(id);
@@ -288,6 +291,11 @@ function Studio() {
   // hand actions: all go through code, and re-run on the next tick (not debounced — see the run effect)
   const hand = (next: string) => { if (next !== hist.codeRef.current) { runImmediate.current = true; hist.setHand(next); } };
   const loadScript = (code: string) => { setPlaying(false); seek(0); hand(code); };
+  const loadDemo = (d: Demo) => {
+    for (const [name, code] of Object.entries(d.maps ?? {})) saveMap(name, code);
+    if (d.maps) setMapsVersion((v) => v + 1);
+    loadScript(d.code);
+  };
   const editable = (o: TObj) => {
     if (!o.locked) return true;
     setNotice(`"${o.from ?? "This map"}" plays from its own script. Edit it in the map tool.`);
@@ -455,16 +463,16 @@ function Studio() {
       )}
       <header className="flex h-11 shrink-0 items-center justify-between gap-4 border-b border-border px-4">
         <div className="flex min-w-0 shrink items-baseline gap-3">
-          <h1 className="shrink-0 whitespace-nowrap font-display text-lg font-semibold tracking-tight">Paint &amp; Turtle</h1>
+          <h1 className="shrink-0 whitespace-nowrap font-display text-lg font-semibold tracking-tight">Pillars of Creation Studio</h1>
           <span className="truncate text-xs text-muted-foreground">{timeline.title}</span>
         </div>
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto whitespace-nowrap text-xs">
-          {notice && <button onClick={() => setNotice(null)} className="text-destructive">{notice} ✕</button>}
+          {notice && <button onClick={() => setNotice(null)} className="max-w-[46ch] truncate text-primary">{notice} ✕</button>}
           <button onClick={hist.undo} title="Undo (Ctrl+Z)" className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"><Undo2 className="h-4 w-4" /></button>
           <button onClick={hist.redo} title="Redo (Ctrl+Shift+Z)" className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"><Redo2 className="h-4 w-4" /></button>
           <select
             value=""
-            onChange={(e) => { const d = DEMOS.find((x) => x.id === e.target.value); if (d) loadScript(d.code); }}
+            onChange={(e) => { const d = DEMOS.find((x) => x.id === e.target.value); if (d) loadDemo(d); }}
             title="Replace the script with an example (undo with Ctrl+Z)"
             className="rounded-md border border-border bg-secondary px-2 py-1 text-foreground"
           >

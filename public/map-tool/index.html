@@ -539,7 +539,7 @@ zoom: Germany"></textarea>
     }
     btn.addEventListener('click', function () {
         var code = document.getElementById('editor').value;
-        var header = 'project "Map from Classic Tool" theme clean_modern\nmap 20 10 zoom 2\n\n';
+        var header = 'project "Map" theme clean_modern\nmap 20 10 zoom 2\n\n';
         try { localStorage.setItem('pnt:handoff', header + code); } catch (e) {}
         window.location.href = '/';
     });

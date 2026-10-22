@@ -9,7 +9,7 @@ const NOUN: Partial<Record<ObjKind, string>> = {
 };
 
 function labelOf(o: TObj) {
-  if (o.locked && o.from) return `Map: ${o.from}`;
+  if (o.locked && o.from && o.kind === "map") return `Map: ${o.from}`;
   const noun = NOUN[o.kind];
   if (!noun || o.id.replace(/\d+$/, "") !== o.kind) return o.id;
   const text = typeof o.data?.text === "string" ? o.data.text : typeof o.data?.label === "string" ? o.data.label : "";
