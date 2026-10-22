@@ -1,137 +1,181 @@
-export interface Demo {
-  id: string;
-  name: string;
-  code: string;
-  /** Maps the script includes, stored under these names when the demo is loaded. */
-  maps?: Record<string, string>;
-}
+import { SAMPLE_CODE } from "./sampleCode";
 
-const EU_MAP = "EU enlargement, 2004 to 2013 (demo)";
+export interface Demo { id: string; name: string; code: string }
 
-/** Starting points. Each line is a plain command: change a word or number and the video changes. */
 export const DEMOS: Demo[] = [
+  { id: "chernobyl", name: "Chernobyl Explained", code: SAMPLE_CODE },
   {
-    id: "population",
-    name: "Eight billion people: a chart",
-    code: `project "Eight billion people" theme clean_modern
+    id: "coffee",
+    name: "The Price of Coffee",
+    code: `project "Why Coffee Got Expensive" theme clean_modern
 
-headline "The world reached *eight billion* people in 2022" paper "UNITED NATIONS" body "Population milestones from the UN World Population Prospects." mark "eight billion" over 3s enter drop
-wait 5s
+headline "Coffee prices hit a record high as harvests fail" paper "THE MORNING LEDGER" body "Drought in Brazil and Vietnam cut supply just as demand kept climbing worldwide." mark "record high" mark "harvests fail" over 3s enter drop
+camera zoom 1.15 over 4s ease smooth
+wait 4.5s
 push 0.6
 
-line "World population (billions)" "1804" 1 "1927" 2 "1959" 3 "1974" 4 "1987" 5 "1999" 6 "2011" 7 "2022" 8 over 5s as pop enter blur
-source pop "UN World Population Prospects" https://population.un.org/wpp/
-wait 7s
-crossfade 0.8
-
-say "Each new billion arrived *sooner* than the one before" at 960 540 beat 0.4s enter pop
-wait 3.5s
+line "Arabica price, $ per lb" "2019" 1.0 "2020" 1.1 "2021" 1.9 "2022" 2.2 "2023" 1.7 "2024" 2.9 over 3s as price enter blur
+unverified price
+camera to 1400 400 zoom 1.5 over 1s ease snap delay 3s
+wait 4.5s
 whip 0.5
 
-bars "Years between each billion (rounded)" "1 to 2" 123 "2 to 3" 32 "3 to 4" 15 "4 to 5" 13 "5 to 6" 12 "6 to 7" 12 "7 to 8" 11 over 4s as gaps enter rise
-source gaps "Derived from the UN milestone years" https://population.un.org/wpp/
-wait 7s
-push 0.6
-
-count 11 suffix " years" label "For the most recent billion, 2011 to 2022" over 2s as last enter pop
-wait 4s
+count 70 suffix "%" label "Share of beans from just five countries" over 2s as share enter pop
+unverified share
+wiggle share over 0.8s delay 2s
+wait 3.5s
 wipe 0.6
 
-say "Eight billion people share one planet, and the next billion will take longer to add" at 960 540 beat 0.4s enter blur
-wait 5s
+say "Your morning cup is a *climate* story" beat 0.35s enter rise
+wait 3s
 `,
   },
   {
-    id: "eu",
-    name: "EU enlargement, 2004 to 2013: a map",
-    code: `project "How the European Union grew" theme clean_modern
+    id: "startup",
+    name: "Startup Growth",
+    code: `project "From Zero to a Million Users" theme clean_modern
 
-say "The European Union grew in *three waves*" at 960 540 beat 0.4s enter blur exit blur
-wait 4s
-crossfade 0.8
+say "Year one: *nobody* noticed" beat 0.3s enter blur exit blur
+wait 2.5s
+whip 0.5
 
-# The map plays from its own script. Open it with "Edit map" to change it.
-include map "${EU_MAP}"
-wait 1s
-crossfade 0.8
+line "Monthly users (thousands)" "Jan" 2 "Mar" 5 "May" 14 "Jul" 60 "Sep" 240 "Nov" 1000 over 3s enter rise
+camera to 1500 350 zoom 1.6 over 0.8s ease snap delay 3s
+shake 14 over 0.4s delay 3.8s
+wait 4.5s
+zoom
 
-count 27 suffix " member states" label "In the European Union today" over 2s as members enter pop
-source members "European Union, member states" https://european-union.europa.eu
-wait 5s
-wipe 0.6
-
-say "Each wave brought new countries into the *single market*" at 960 540 beat 0.4s enter rise
-wait 4s
-`,
-    maps: {
-      [EU_MAP]: `map 52 15 zoom 2.6 as europe
-year "2004" highlight
-wait 1s
-
-country poland blue fade
-country czechia blue fade
-country slovakia blue fade
-country hungary blue fade
-country slovenia blue fade
-country estonia blue fade
-country latvia blue fade
-country lithuania blue fade
-country cyprus blue fade
-country malta blue fade
-bubble 50.5 21 "2004: ten countries, about 74 million people" blue
-legend "2004" blue
-wait 4s
-
-fly 46 18 zoom 3.0 over 2s
-year "2007" highlight
-country bulgaria green fade
-country romania green fade
-bubble 43 25 "2007: Bulgaria and Romania" green
-legend "2007" green
-wait 4s
-
-fly 45 17 zoom 3.4 over 2s
-year "2013" highlight
-country croatia orange fade
-bubble 45.5 15.9 "2013: Croatia, the 28th member" orange
-legend "2013" orange
-wait 4s
-
-fly 52 15 zoom 2.6 over 2.5s
+count 1 suffix "M" label "Users after 11 months" over 1.5s as users enter spin
+pulse users 0.2 over 0.6s delay 1.5s
 wait 3s
-`,
-    },
-  },
-  {
-    id: "sky",
-    name: "Why the sky is blue: a diagram",
-    code: `project "Why the sky is blue" theme clean_modern
-
-say "Sunlight looks white, but it is *every colour mixed together*" at 960 540 beat 0.4s enter pop exit fade
-wait 5s
-crossfade 0.8
-
-say "Air molecules are much smaller than the wavelength of light" at 960 260 beat 0.4s enter rise
-arrow from 220 620 to 820 620 over 1.5s
-circle at 520 620 radius 110 over 1s
-wait 5s
-crossfade 0.8
-
-bars "Relative scattering (red = 1, approximate)" "Red" 1 "Green" 3 "Blue" 6 "Violet" 9 over 4s as scatter enter rise
-wait 6s
 push 0.6
 
-count 6 suffix " times" label "More scattering for blue than for red" over 2s as ratio enter pop
-source ratio "Rayleigh scattering: strength follows the wavelength to the fourth power"
-wait 5s
-count 450 suffix " nm" label "Wavelength of blue light (approximate)" over 2s as blue_nm enter rise
-wait 3s
-count 700 suffix " nm" label "Wavelength of red light (approximate)" over 2s as red_nm enter rise
-wait 3s
-wipe 0.6
+bars "Where users came from (%)" "Search" 18 "Ads" 12 "Word of mouth" 70 over 3s enter slide_left
+circle at 1500 560 radius 160 over 0.6s delay 3s
+wait 4s
+blur 0.6
 
-say "At sunset the light travels farther, the blue is scattered away, and the *red* reaches you" at 960 540 beat 0.4s enter blur
+say "Build something people *tell friends about*" beat 0.3s enter pop
+move say2 to 960 480 curve 120 over 1.2s ease spring delay 2s
+wait 3s
+`,
+  },
+  {
+    id: "showcase",
+    name: "Feature Showcase (university briefing)",
+    code: `project "Department of Astrophysics — Research Briefing" theme clean_modern
+style radius 12
+
+# --- 1. Title card
+say "Star Formation in the *Eagle Nebula*" at 960 520 beat 0.35s enter fade exit fade
+wait 3s
+crossfade 0.8
+
+# --- 2. Photo: slow zoom, caption, gentle camera drift
+show photo @pillars as nebula enter fade
+zoom nebula 1.0 to 1.12 over 6s ease smooth
+caption nebula "Fig. 1 — The Pillars of Creation, M16"
+fade nebula to 0.85 over 1s delay 4.5s
 wait 6s
+wipe 0.7
+
+# --- 3. Key figure with citation
+count 6500 suffix " ly" label "Distance from Earth" over 2.5s as dist enter rise
+source dist "NASA Science" https://science.nasa.gov
+unverified dist
+pulse dist 0.06 over 0.8s delay 2.6s
+shake 3 over 0.3s delay 2.6s
+wait 4s
+crossfade 0.7
+
+# --- 4. Results with annotations
+bars "Observed protostars by region" "Pillar I" 40 "Pillar II" 65 "Pillar III" 80 "Periphery" 95 over 3s enter rise
+highlight from 90 128 to 1240 128 over 0.6s delay 3.2s
+box at 80 590 size 440 360 over 0.6s delay 3.6s
+circle at 1620 324 radius 64 over 0.6s delay 4s
+wait 5s
+push 0.7
+
+# --- 5. Trend with focused camera
+line "Publications per year" "2019" 2 "2020" 5 "2021" 9 "2022" 20 over 3s as growth enter fade
+camera to 1180 560 zoom 1.2 over 1.2s ease smooth delay 3s
+wait 5s
+blur 0.6
+
+# --- 6. Press coverage
+headline "New images reveal stellar nurseries in unprecedented detail" paper "UNIVERSITY NEWS" body "Researchers from the department analysed infrared data from the James Webb Space Telescope." mark "unprecedented detail" over 3s enter fade
+wait 4.5s
+crossfade 0.8
+
+# --- 7. Methodology diagram drawn with a loop
+let gap = 380
+say "Data *pipeline*" at 960 220 beat 0.3s as title enter fade
+wait 0.8s
+for i from 0 to 3
+  arrow from (250 + i*gap) 650 to (450 + i*gap) 650 over 0.4s
+  wait 0.3s
+end
+move title to 960 420 curve 40 over 1.2s ease smooth
+scale title 1.1 over 0.6s delay 1.4s
+rotate title -2 over 0.6s delay 2.2s
+wiggle title over 0.4s delay 2.8s
+wait 3.5s
+`,
+  },
+  {
+    id: "yugoslav",
+    name: "Map: The Yugoslav Wars",
+    code: `project "The Yugoslav Wars, 1991-1999" theme clean_modern
+# Map briefing: coloured countries, attack arrows, symbols, camera flights.
+# Click a line to select it on the map, or drag pins, labels and arrow handles.
+
+map 44 18 zoom 5.2 as balkans
+year "1991"
+wait 1s
+
+country slovenia green pulse
+pin 46.05 14.5 flag green
+legend "Slovenia" green
+wait 1.2s
+
+country serbia red pulse
+pin 44.8 20.46 troops red
+legend "Serbia" red
+wait 1.2s
+
+country croatia blue sweep
+attack serbia croatia red bend 0.2 width 1.4
+pin 45.35 19.0 battle red delay 1s
+legend "Croatia" blue
+wait 2.8s
+
+year "1992"
+country bosnia purple radial
+attack serbia bosnia red bend -0.15 delay 0.6s
+legend "Bosnia and Herzegovina" purple
+wait 2.4s
+
+fly 44.1 19.2 zoom 6.6 tilt 35 over 2s
+year "1995" highlight
+wait 2s
+pin 44.1 19.3 skull red size 1.3
+bubble 44.35 19.3 "Srebrenica, July 1995: about 8,000 Bosniak men and boys killed" red delay 0.4s
+wait 3.5s
+
+remove labels
+pin 43.86 18.41 bombing blue size 1.2
+tag 43.86 18.75 "NATO air campaign" left blue
+wait 2.5s
+
+remove arrows
+fly 43.4 20.4 zoom 6.2 tilt 0 over 2s
+year "1999" highlight
+wait 1.6s
+country kosovo orange pulse
+pin 42.66 21.16 capital orange
+label 42.25 20.9 "Kosovo" size 20
+legend "Kosovo" orange
+wait 3.5s
 `,
   },
 ];

@@ -6,14 +6,13 @@ interface Props {
   voices: AudioItem[];
   active?: string | undefined;
   status: string | null;
-  progress: number | null;
   onUpload: (f: File) => void;
   onUse: (name: string) => void;
   onSubtitles: (name: string) => void;
   onRemove: (name: string) => void;
 }
 
-export function VoicePanel({ voices, active, status, progress, onUpload, onUse, onSubtitles, onRemove }: Props) {
+export function VoicePanel({ voices, active, status, onUpload, onUse, onSubtitles, onRemove }: Props) {
   const input = useRef<HTMLInputElement>(null);
   return (
     <div className="border-b border-border p-2">
@@ -35,11 +34,6 @@ export function VoicePanel({ voices, active, status, progress, onUpload, onUse, 
         ))}
       </div>
       {status && <p className="mt-1 text-[11px] text-primary">{status}</p>}
-      {progress !== null && (
-        <div className="mt-1 h-1 overflow-hidden rounded-full bg-secondary">
-          <div className="h-full bg-primary transition-[width]" style={{ width: `${Math.min(100, Math.max(2, progress))}%` }} />
-        </div>
-      )}
     </div>
   );
 }

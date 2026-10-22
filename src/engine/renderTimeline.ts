@@ -219,13 +219,13 @@ function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets
     case "map": renderMap(ctx, theme, mapCamAt(o, t), d.fills, d.labels, t, d.renames ?? []); break;
     case "attack": { const e = geoEnds(o, t); drawAttack(ctx, e.a, e.b, d.bend, d.width, d.head, d.color, p); break; }
     case "route": { const e = geoEnds(o, t); drawRoute(ctx, e.a, e.b, d.color, p, d.straight); break; }
-    case "pin": ctx.translate(org[0], org[1]); drawPin(ctx, d.symbol, d.color, d.size, local, mapCamAt(o.data.map, t).zoom); break;
+    case "pin": ctx.translate(org[0], org[1]); drawPin(ctx, d.symbol, d.color, d.size, local); break;
     case "bubble": ctx.translate(org[0], org[1]); drawBubble(ctx, theme, d.text, d.color, local, d.subtitle); break;
     case "label": ctx.translate(org[0], org[1]); drawPlace(ctx, theme, d.text, d.size, d.color, local); break;
     case "tag": ctx.translate(org[0], org[1]); drawTag(ctx, theme, d.text, d.dir, d.color, local); break;
     case "year": ctx.translate(o.origin[0], o.origin[1]); drawYear(ctx, theme, d.text, d.highlight, local); break;
     case "legend": ctx.translate(o.origin[0], o.origin[1]); drawLegend(ctx, theme, d.entries, t); break;
-    case "effect": ctx.translate(org[0], org[1]); drawEffect(ctx, d.symbol, d.color, d.size, local, mapCamAt(o.data.map, t).zoom); break;
+    case "effect": ctx.translate(org[0], org[1]); drawEffect(ctx, d.symbol, d.color, d.size, local, mapCamAt(o, t).zoom); break;
   }
   ctx.restore();
 }

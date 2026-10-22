@@ -33,8 +33,8 @@ export interface LexLine {
   indent: string;
 }
 
-const isIdStart = (c: string) => /[\p{L}_]/u.test(c);
-const isId = (c: string) => /[\p{L}\p{N}_]/u.test(c);
+const isIdStart = (c: string) => /[A-Za-z_]/.test(c);
+const isId = (c: string) => /[A-Za-z0-9_]/.test(c);
 const isDigit = (c: string) => c >= "0" && c <= "9";
 
 /** Lex source into per-line token lists. */
@@ -115,7 +115,7 @@ export function lex(src: string): LexLine[] {
       if (isIdStart(c)) {
         while (i < raw.length && isId(raw[i])) i++;
         // legacy place names keep hyphens together: Nordrhein-Westfalen
-        while (raw[i] === "-" && /\p{L}/u.test(raw[i + 1] ?? "")) {
+        while (raw[i] === "-" && /[A-Za-z]/.test(raw[i + 1] ?? "")) {
           i++;
           while (i < raw.length && isId(raw[i])) i++;
         }

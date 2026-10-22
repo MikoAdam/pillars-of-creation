@@ -86,10 +86,6 @@ function parseArgs(ts: TokStream): Arg[] {
   return args;
 }
 
-/** Legacy named-field keywords: a chunk starting with one of these is a `keyword value`
- * pair, never a multi-word place name, so it must not be joined into one word. */
-const LEGACY_FIELD_KEYWORDS = new Set(["color", "curve", "width", "head", "dur", "anim", "size"]);
-
 /** One chunk of tokens between commas in a legacy `name: a, b, c` line. */
 function legacyChunk(chunk: Tok[], line: number): Arg[] {
   if (!chunk.length) return [];
@@ -104,8 +100,7 @@ function legacyChunk(chunk: Tok[], line: number): Arg[] {
     if (t.kind === "color") return [{ kind: "word", name: t.text, tok: t }];
     if (t.kind === "url") return [{ kind: "url", v: t.text, tok: t }];
   }
-  if (chunk.every((t) => t.kind === "ident") && !LEGACY_FIELD_KEYWORDS.has(chunk[0].text.toLowerCase()))
-    return [{ kind: "word", name: joined.text, tok: joined }];
+  if (chunk.every((t) => t.kind === "ident")) return [{ kind: "word", name: joined.text, tok: joined }];
   // mixed chunk (named attack fields like `from 52.5 13.4`, or math) — keep tokens, math still evaluates
   if (chunk.some((t) => t.kind === "op" || t.kind === "lparen")) {
     const ts = new TokStream(chunk, line);

@@ -16,14 +16,12 @@ interface Props {
   onRedo: () => void;
   error: { line: number; col: number; len: number; message: string } | null;
   selectedLines: Set<number>;
-  /** lines of the block running at the playhead */
-  activeLines: Set<number>;
   onCaretLine: (line: number) => void;
   assetNames: string[];
   objectIds: string[];
 }
 
-const TOKEN_RE = /(#.*$)|("(?:\\.|[^"\\])*"?)|(https?:\/\/\S+)|(@[\w-]+)|(-?\d+(?:\.\d+)?s?(?![\w]))|(\p{L}[\p{L}\p{N}_]*)|(\s+)|(.)/gu;
+const TOKEN_RE = /(#.*$)|("(?:\\.|[^"\\])*"?)|(https?:\/\/\S+)|(@[\w-]+)|(-?\d+(?:\.\d+)?s?(?![\w]))|([A-Za-z_]\w*)|(\s+)|(.)/g;
 
 function highlightLine(line: string) {
   const out: { t: string; c: string }[] = [];
@@ -48,15 +46,6 @@ export function CodeEditor(p: Props) {
   const [scroll, setScroll] = useState({ top: 0, left: 0 });
   const [ac, setAc] = useState<{ items: string[]; sel: number; prefix: string; line: number; col: number } | null>(null);
   const lines = useMemo(() => p.value.split("\n"), [p.value]);
-
-  // follow the playhead: keep the running block in view
-  useEffect(() => {
-    const el = ta.current;
-    if (!el || !p.activeLines.size) return;
-    const first = Math.min(...p.activeLines);
-    const y = first * LH;
-    if (y < el.scrollTop + LH || y > el.scrollTop + el.clientHeight - LH * 3) el.scrollTop = Math.max(0, y - el.clientHeight / 3);
-  }, [p.activeLines]);
 
   // keep selected lines visible when selection comes from the canvas
   useEffect(() => {
@@ -151,7 +140,7 @@ export function CodeEditor(p: Props) {
       <div className="w-10 shrink-0 select-none overflow-hidden border-r border-border text-right text-muted-foreground/60">
         <div style={{ transform: `translateY(${PAD - scroll.top}px)` }}>
           {lines.map((_, i) => (
-            <div key={i} className={`pr-2 ${p.error?.line === i ? "text-destructive" : p.activeLines.has(i) ? "font-semibold text-primary" : p.selectedLines.has(i) ? "text-primary" : ""}`}>{i + 1}</div>
+            <div key={i} className={`pr-2 ${p.error?.line === i ? "text-destructive" : p.selectedLines.has(i) ? "text-primary" : ""}`}>{i + 1}</div>
           ))}
         </div>
       </div>
@@ -159,7 +148,7 @@ export function CodeEditor(p: Props) {
         <pre aria-hidden className="pointer-events-none absolute inset-0 m-0 overflow-hidden whitespace-pre" style={{ padding: PAD, tabSize: 2 }}>
           <div style={{ transform: `translate(${-scroll.left}px, ${-scroll.top}px)` }}>
             {lines.map((l, i) => (
-              <div key={i} className={`relative ${p.activeLines.has(i) ? "bg-primary/20 -mx-3 px-3" : p.selectedLines.has(i) ? "bg-primary/10 -mx-3 px-3" : ""}`} style={{ height: LH }}>
+              <div key={i} className={`relative ${p.selectedLines.has(i) ? "bg-primary/10 -mx-3 px-3" : ""}`} style={{ height: LH }}>
                 {highlightLine(l).map((tk, j) => <span key={j} className={tk.c}>{tk.t}</span>)}
                 {p.error?.line === i && (
                   <span className="absolute bottom-0.5 border-b-2 border-dotted border-destructive" style={{ left: `calc(${p.error.col}ch + ${p.selectedLines.has(i) ? 12 : 0}px)`, width: `${Math.max(1, p.error.len)}ch` }} />

@@ -1,7 +1,9 @@
 import { useEffect, useState, type DragEvent } from "react";
 import { FX_STYLES, sample, type TObj } from "@/lang/timeline";
 import type { FxDrop } from "./Stage";
+import { SYMBOLS } from "@/render/symbols";
 import { MAP_COLORS, MAP_COLOR_NAMES } from "@/render/geo";
+import { MAP_ANIMS } from "@/lang/interpreter";
 
 export const ELEMENTS: { label: string; cmd: string }[] = [
   { label: "Text", cmd: 'say "Your *big* idea" at {x} {y} enter pop' },
@@ -30,14 +32,29 @@ const CAMERA: { label: string; cmd: string }[] = [
   { label: "Snap zoom", cmd: "camera zoom 1.6 over 0.4s ease snap" },
   { label: "Pull out", cmd: "camera to 960 540 zoom 1 over 1.5s ease out" },
   { label: "Drift left", cmd: "camera to 860 540 over 4s ease linear" },
+  { label: "Shake", cmd: "shake 24 over 0.5s" },
 ];
 
 const nice = (s: string) => s.replace("_", " ").replace(/^\w/, (c) => c.toUpperCase());
 
-type Tab = "elements" | "animate" | "transitions" | "camera";
+type Tab = "elements" | "map" | "animate" | "transitions" | "camera";
+
+const MAP_ITEMS: { label: string; cmd: string; title: string }[] = [
+  { label: "Map", cmd: "map 48 15 zoom 3.5", title: "Starts a map scene. Drag it to pan, corner handles zoom, the knob turns it" },
+  { label: "Year", cmd: 'year "1991" highlight', title: "Date badge in the corner" },
+  { label: "Legend", cmd: "legend auto", title: "Legend built from the coloured countries" },
+  { label: "Bubble", cmd: 'bubble {lat} {lng} "What happened here" {color}', title: "Callout pinned to a place" },
+  { label: "Label", cmd: 'label {lat} {lng} "Place name" size 18', title: "Text on the map" },
+  { label: "Direction tag", cmd: 'tag {lat} {lng} "Advance" right {color}', title: "Arrow-shaped label" },
+  { label: "Remove arrows", cmd: "remove arrows", title: "Clears attack arrows and routes at the playhead" },
+];
 
 interface Props {
   selected: TObj | undefined;
+  mapColor: string;
+  mapAnim: string;
+  onMapColor: (c: string) => void;
+  onMapAnim: (a: string) => void;
   onInsertCenter: (cmd: string) => void;
   onInsert: (cmd: string) => void;
   onFx: (o: TObj, fx: FxDrop) => void;
@@ -65,7 +82,7 @@ export function Library(p: Props) {
   return (
     <div className="flex items-center gap-2 overflow-hidden rounded-xl border border-border bg-card px-2 py-1.5">
       <div className="flex shrink-0 rounded-lg bg-secondary p-0.5 text-xs">
-        {(["elements", "animate", "transitions", "camera"] as Tab[]).map((t) => (
+        {(["elements", "map", "animate", "transitions", "camera"] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`rounded-md px-2 py-1 capitalize ${tab === t ? "bg-background font-semibold text-foreground shadow-sm" : "text-muted-foreground"}`}>{t}</button>
         ))}
       </div>
@@ -73,6 +90,26 @@ export function Library(p: Props) {
         {tab === "elements" && ELEMENTS.map((e) => (
           <Chip key={e.label} label={e.label} data={["application/x-element", e.cmd]} onClick={() => p.onInsertCenter(e.cmd)} title="Drag onto the video, or click to add in the middle" />
         ))}
+        {tab === "map" && (
+          <>
+            <span className="h-3.5 w-3.5 shrink-0 rounded-full border border-border" style={{ background: MAP_COLORS[p.mapColor] }} />
+            <select value={p.mapColor} onChange={(e) => p.onMapColor(e.target.value)} title="Colour for new map items and the map tool (M)" className="shrink-0 rounded-md border border-border bg-secondary px-1.5 py-0.5 text-xs text-foreground">
+              {MAP_COLOR_NAMES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={p.mapAnim} onChange={(e) => p.onMapAnim(e.target.value)} title="How countries appear when clicked with the map tool (M)" className="shrink-0 rounded-md border border-border bg-secondary px-1.5 py-0.5 text-xs text-foreground">
+              {MAP_ANIMS.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+            {MAP_ITEMS.map((e) => {
+              const cmd = e.cmd.replace("{color}", p.mapColor);
+              return <Chip key={e.label} label={e.label} data={[cmd.includes("{lat}") ? "application/x-element" : "application/x-cmd", cmd]} onClick={() => (cmd.includes("{lat}") ? p.onInsertCenter(cmd) : p.onInsert(cmd))} title={e.title} />;
+            })}
+            <span className="ml-1 shrink-0 text-[11px] text-muted-foreground">Symbols</span>
+            {SYMBOLS.map((sym) => {
+              const cmd = `pin {lat} {lng} ${sym} ${p.mapColor}`;
+              return <Chip key={sym} label={nice(sym)} data={["application/x-element", cmd]} onClick={() => p.onInsertCenter(cmd)} title="Drag onto the map, or click to add in the middle" />;
+            })}
+          </>
+        )}
         {tab === "animate" && (
           <>
             <span className="shrink-0 text-[11px] text-muted-foreground">In</span>
@@ -105,12 +142,10 @@ interface InspProps {
   onRotate: (deg: number) => void;
   onOpacity: (v: number) => void;
   onPreviewOpacity: (v: number | undefined) => void;
-  /** map markers / arrows only: recolour in place */
-  onColor?: ((c: string) => void) | undefined;
 }
 
 /** Properties of the selected object. Each control edits the script. */
-export function Inspector({ o, t, onFx, onRotate, onOpacity, onPreviewOpacity, onColor }: InspProps) {
+export function Inspector({ o, t, onFx, onRotate, onOpacity, onPreviewOpacity }: InspProps) {
   const rot = Math.round(sample(o.rot, t)[0]);
   const op = Math.round(sample(o.opacity, t)[0] * 100) / 100;
   const [r, setR] = useState(rot);
@@ -126,22 +161,6 @@ export function Inspector({ o, t, onFx, onRotate, onOpacity, onPreviewOpacity, o
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-border bg-card px-3 py-1.5 text-xs">
       <span className="font-mono font-semibold text-primary">{o.id}</span>
-      {onColor && (
-        <label className="flex items-center gap-1 text-muted-foreground" title="Recolour (edits the script line)">
-          Colour
-          <span className="flex items-center gap-0.5">
-            {MAP_COLOR_NAMES.map((c) => (
-              <button
-                key={c}
-                onClick={() => onColor(c)}
-                title={c}
-                className="h-3.5 w-3.5 rounded-full border border-border"
-                style={{ background: MAP_COLORS[c] }}
-              />
-            ))}
-          </span>
-        </label>
-      )}
       <label className="flex items-center gap-1.5 text-muted-foreground">In {sel("enter", o.enterFx?.style)}</label>
       <label className="flex items-center gap-1.5 text-muted-foreground">Out {sel("exit", o.exitFx?.style)}</label>
       <label className="flex items-center gap-1.5 text-muted-foreground">
@@ -158,17 +177,6 @@ export function Inspector({ o, t, onFx, onRotate, onOpacity, onPreviewOpacity, o
           onKeyUp={() => { onPreviewOpacity(undefined); if (a !== op) onOpacity(a); }} className="w-20 accent-primary" />
         <span className="w-8 font-mono">{Math.round(a * 100)}%</span>
       </label>
-    </div>
-  );
-}
-
-export function MapLocked({ name, onEdit }: { name: string; onEdit: () => void }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-2 text-xs">
-      <span className="text-muted-foreground">
-        <span className="font-semibold text-foreground">Map: {name || "unnamed"}</span> plays from its own script. Change it in the map tool.
-      </span>
-      <button onClick={onEdit} disabled={!name} className="shrink-0 rounded-md bg-primary px-3 py-1 font-semibold text-primary-foreground disabled:opacity-50">Edit map</button>
     </div>
   );
 }
