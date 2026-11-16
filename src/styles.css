@@ -119,8 +119,7 @@
 /* Studio skins (set on <html data-ui="...">). Default above = professional slate. */
 [data-ui="clean"] {
   color-scheme: light;
-  --radius: 0.875rem;
-  --ui-sans: "Plus Jakarta Sans"; --ui-display: "Plus Jakarta Sans";
+  /* Light mode changes only colors; inherit the default font and geometry. */
   --background: oklch(0.985 0.002 250); --foreground: oklch(0.2 0.02 260);
   --card: oklch(1 0 0); --card-foreground: oklch(0.2 0.02 260);
   --popover: oklch(1 0 0); --popover-foreground: oklch(0.2 0.02 260);
