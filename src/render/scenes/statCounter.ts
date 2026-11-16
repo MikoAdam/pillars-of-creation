@@ -31,7 +31,11 @@ export function renderStatCounter(rc: RenderCtx, s: StatCounterScene, t: number)
   ctx.fillStyle = theme.colors.text;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  ctx.shadowColor = alpha(theme.colors.accent, 0.35);
+  ctx.shadowBlur = 60;
   ctx.fillText(txt, 0, 0);
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
   if (s.unit) {
     ctx.font = bodyFont(theme, 52, 700);
     ctx.fillStyle = theme.colors.accent;

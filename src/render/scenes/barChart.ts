@@ -37,18 +37,24 @@ export function renderBarChart(rc: RenderCtx, s: BarChartScene, t: number) {
     const p = theme.easing.enter(prog(t, 0.4 + i * stagger, growDur));
     const h = ((bottom - top - 60) * b.value) / max;
     const x = left + i * (bw + gap);
-    const color = !anyHighlight || b.highlight ? theme.colors.accent : alpha(theme.colors.text, 0.35);
-    ctx.fillStyle = color;
+    const hi = !anyHighlight || b.highlight;
+    const g = ctx.createLinearGradient(0, bottom - h, 0, bottom);
+    g.addColorStop(0, hi ? theme.colors.accent : alpha(theme.colors.text, 0.45));
+    g.addColorStop(1, hi ? alpha(theme.colors.accent, 0.3) : alpha(theme.colors.text, 0.15));
+    ctx.fillStyle = g;
+    if (hi) { ctx.shadowColor = alpha(theme.colors.accent, 0.45); ctx.shadowBlur = 40; }
     fillRound(ctx, x, bottom - h * Math.max(0, p), bw, h * Math.max(0, p), theme.radius ?? 0, true);
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
 
     const lp = prog(t, 0.4 + i * stagger, 0.3);
     ctx.globalAlpha = lp;
     ctx.fillStyle = theme.colors.text;
     ctx.textAlign = "center";
-    ctx.font = bodyFont(theme, Math.min(30, bw * 0.22), 500);
+    ctx.font = bodyFont(theme, Math.min(36, bw * 0.24), 500);
     ctx.textBaseline = "top";
     ctx.fillText(b.label, x + bw / 2, bottom + 20);
-    ctx.font = bodyFont(theme, Math.min(40, bw * 0.28), 700);
+    ctx.font = bodyFont(theme, Math.min(54, bw * 0.32), 700);
     ctx.textBaseline = "bottom";
     const v = b.value * Math.min(1, Math.max(0, p));
     const dec = Number.isInteger(b.value) ? 0 : (String(b.value).split(".")[1]?.length ?? 1);

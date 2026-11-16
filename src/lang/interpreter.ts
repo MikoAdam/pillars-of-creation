@@ -9,6 +9,7 @@ import { addSeg, emptyCamera, sample, EASES, EASE_NAMES, FX_STYLES, type FxStyle
 
 export const THEME_NAMES: Record<string, string> = {
   clean_modern: "clean-modern",
+  midnight: "midnight",
 };
 
 export const STYLE_KEYS = ["background", "text", "accent", "display", "body", "radius", "grain", "caps"] as const;

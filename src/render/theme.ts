@@ -11,6 +11,15 @@ export const THEMES: Theme[] = [
     grain: 0,
     radius: 24,
   },
+  {
+    id: "midnight",
+    name: "Midnight",
+    fonts: { display: "Plus Jakarta Sans", body: "Plus Jakarta Sans", displayWeight: 800, displayUpper: false },
+    colors: { background: "#0b1020", text: "#f4f6ff", accent: "#7c9cff" },
+    easing: { enter: easeOutQuint, move: easeInOutCubic, count: easeOutExpo },
+    grain: 0.05,
+    radius: 24,
+  },
 ];
 
 /** Fonts a script may pick with `style display/body "..."`, with the weight used for headings. */

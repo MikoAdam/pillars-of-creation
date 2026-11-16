@@ -13,7 +13,7 @@ export const DEMOS: Demo[] = [
   {
     id: "population",
     name: "Eight billion people: a chart",
-    code: `project "Eight billion people" theme clean_modern
+    code: `project "Eight billion people" theme midnight
 
 headline "The world reached *eight billion* people in 2022" paper "UNITED NATIONS" body "Population milestones from the UN World Population Prospects." mark "eight billion" over 3s enter drop
 wait 5s
@@ -105,7 +105,7 @@ wait 3s
   {
     id: "sky",
     name: "Why the sky is blue: a diagram",
-    code: `project "Why the sky is blue" theme clean_modern
+    code: `project "Why the sky is blue" theme midnight
 
 say "Sunlight looks white, but it is *every colour mixed together*" at 960 540 beat 0.4s enter pop exit fade
 wait 5s
