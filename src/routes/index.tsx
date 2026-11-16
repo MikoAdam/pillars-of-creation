@@ -23,6 +23,7 @@ import { Stage, type FxDrop, type Tool } from "@/editor/Stage";
 import { TimelinePanel } from "@/editor/TimelinePanel";
 import { MediaBin } from "@/editor/MediaBin";
 import { AI_PROMPT } from "@/editor/aiPrompt";
+import { Button } from "@/components/ui/button";
 import { DEMOS, type Demo } from "@/editor/demos";
 import { useHistory } from "@/editor/useHistory";
 import { BUILTIN_MEDIA, fileToDataUrl, loadSaved, saveCode, saveMedia, takeHandoff, uniqueName, type MediaItem } from "@/editor/assets";
@@ -542,13 +543,15 @@ function Studio() {
           <button onClick={() => projectInput.current?.click()} title="Open a saved project file (.pillars.json)" className="rounded-md border border-border bg-secondary px-2.5 py-1 text-foreground hover:bg-accent">Open</button>
           <input ref={projectInput} type="file" accept=".json,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void openProject(f); e.target.value = ""; }} />
           <button onClick={saveProject} title="Save the script, its maps and your photos as one project file" className="rounded-md border border-border bg-secondary px-2.5 py-1 text-foreground hover:bg-accent">Save</button>
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => void copyAiPrompt()}
-            title="Copy a prompt that teaches any AI chat this script language. Paste it into the chat, then paste the script it writes back into the editor."
-            className="rounded-md border border-border bg-secondary px-2.5 py-1 text-foreground hover:bg-accent"
+            title="Copy an explanation of the studio, its workflow and scripting syntax for an LLM"
+            className="h-auto border border-border px-2.5 py-1 font-normal shadow-none"
           >
-            {promptCopied ? "Copied" : "Copy AI prompt"}
-          </button>
+            {promptCopied ? "Copied" : "Copy explanation for LLMs"}
+          </Button>
           <button onClick={() => setPasteOpen(true)} title="Paste a script an AI wrote, check it, and load it" className="rounded-md border border-border bg-secondary px-2.5 py-1 text-foreground hover:bg-accent">Paste from AI</button>
           <StylePanel
             base={baseTheme}
