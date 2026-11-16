@@ -4,6 +4,9 @@ import type { FxDrop } from "./Stage";
 import { MAP_COLORS, MAP_COLOR_NAMES } from "@/render/geo";
 
 export const ELEMENTS: { label: string; cmd: string }[] = [
+  { label: "Title card", cmd: 'title "A *big* idea" sub "and the line under it" at {x} {y}' },
+  { label: "Lower third", cmd: 'lower "Jane Doe" "Astrophysicist"' },
+  { label: "Quote", cmd: 'quote "Something worth *remembering*" by "Who said it" at {x} {y}' },
   { label: "Text", cmd: 'say "Your *big* idea" at {x} {y} enter pop' },
   { label: "Counter", cmd: 'count 100 label "Label" at {x} {y} over 1.5s enter rise' },
   { label: "Bar chart", cmd: 'bars "Title" "A" 30 "B" 70 "C" 50 at {x} {y} over 2s enter rise' },

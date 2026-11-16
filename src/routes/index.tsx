@@ -4,6 +4,7 @@ import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pa
 import { geoReady, loadGeo } from "@/render/geo";
 import { MapInspector } from "@/editor/MapPanel";
 import { ExportDialog } from "@/editor/ExportDialog";
+import { downloadBlob } from "@/engine/exportVideo";
 import { VoicePanel } from "@/editor/VoicePanel";
 import { deleteAudio, loadAudio, saveAudio, type AudioItem } from "@/editor/audioStore";
 import { cuesToCode, transcribe } from "@/editor/transcribe";
@@ -145,6 +146,31 @@ function Studio() {
   }, [code, geoVersion, mapsVersion]);
   const [promptCopied, setPromptCopied] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
+  const projectInput = useRef<HTMLInputElement>(null);
+  const saveProject = () => {
+    const maps = Object.fromEntries(listMaps().map((n) => [n, getMapCode(n) ?? ""]));
+    const data = { app: "pillars-of-creation", version: 1, title: timeline.title, code: hist.codeRef.current, maps, media: media.filter((m) => !m.builtin) };
+    const base = (timeline.title || "project").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "project";
+    downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), `${base}.pillars.json`);
+  };
+  const openProject = async (f: File) => {
+    try {
+      const d = JSON.parse(await f.text()) as { code?: unknown; maps?: Record<string, unknown>; media?: unknown };
+      if (typeof d?.code !== "string") throw new Error("not a project");
+      for (const [n, c] of Object.entries(d.maps ?? {})) if (typeof c === "string") saveMap(n, c);
+      if (d.maps) setMapsVersion((v) => v + 1);
+      if (Array.isArray(d.media)) {
+        const items = (d.media as MediaItem[]).filter((m) => m && typeof m.name === "string" && typeof m.src === "string");
+        const next = [...BUILTIN_MEDIA, ...items];
+        setMedia(next);
+        saveMedia(next);
+      }
+      loadScript(d.code);
+      setNotice(`Opened ${f.name}`);
+    } catch {
+      setNotice("That file isn't a Pillars of Creation project.");
+    }
+  };
   const copyAiPrompt = async () => {
     try {
       await navigator.clipboard.writeText(AI_PROMPT);
@@ -489,6 +515,9 @@ function Studio() {
             <option value="" disabled>Examples…</option>
             {DEMOS.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
+          <button onClick={() => projectInput.current?.click()} title="Open a saved project file (.pillars.json)" className="rounded-md border border-border bg-secondary px-2.5 py-1 text-foreground hover:bg-accent">Open</button>
+          <input ref={projectInput} type="file" accept=".json,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void openProject(f); e.target.value = ""; }} />
+          <button onClick={saveProject} title="Save the script, its maps and your photos as one project file" className="rounded-md border border-border bg-secondary px-2.5 py-1 text-foreground hover:bg-accent">Save</button>
           <button
             onClick={() => void copyAiPrompt()}
             title="Copy a prompt that teaches any AI chat this script language. Paste it into the chat, then paste the script it writes back into the editor."

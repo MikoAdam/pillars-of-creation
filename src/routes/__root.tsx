@@ -94,6 +94,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
+    // runs before the first paint, so a saved light mode never flashes dark first
+    scripts: [{ children: '(function(){try{if(localStorage.getItem("studio-mode")==="light")document.documentElement.setAttribute("data-ui","clean")}catch(e){}})();' }],
   }),
   shellComponent: RootShell,
   component: RootComponent,

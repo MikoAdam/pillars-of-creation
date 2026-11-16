@@ -15,6 +15,10 @@ export const DEMOS: Demo[] = [
     name: "Eight billion people: a chart",
     code: `project "Eight billion people" theme midnight
 
+title "Eight *billion* people" sub "How the world got here"
+wait 4s
+crossfade 0.8
+
 headline "The world reached *eight billion* people in 2022" paper "UNITED NATIONS" body "Population milestones from the UN World Population Prospects." mark "eight billion" over 3s enter drop
 wait 5s
 push 0.6
@@ -55,6 +59,7 @@ include map "${EU_MAP}"
 wait 1s
 crossfade 0.8
 
+lower "European Union" "27 member states, 2013 to today"
 count 27 suffix " member states" label "In the European Union today" over 2s as members enter pop
 source members "European Union, member states" https://european-union.europa.eu
 wait 5s
@@ -131,6 +136,10 @@ wait 3s
 wipe 0.6
 
 say "At sunset the light travels farther, the blue is scattered away, and the *red* reaches you" at 960 540 beat 0.4s enter blur
+wait 6s
+crossfade 0.8
+
+quote "The sky is blue because *air scatters blue light*" by "Lord Rayleigh, 1871"
 wait 6s
 `,
   },

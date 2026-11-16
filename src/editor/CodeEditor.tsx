@@ -4,7 +4,7 @@ import { EASE_NAMES, FX_STYLES } from "@/lang/timeline";
 import { MAP_COLOR_NAMES, geoFeatures } from "@/render/geo";
 import { SYMBOLS } from "@/render/symbols";
 
-const KEYWORDS = ["over", "as", "at", "to", "from", "unit", "prefix", "suffix", "label", "beat", "radius", "size", "scale", "delay", "body", "paper", "mark", "theme", "photo", "step", "vignette", "off", "in", "out", "background", "text", "accent", "display", "radius", "grain", "caps", "on", "enter", "exit", "rotate", "ease", "curve", "opacity", "zoom", "tilt", "turn", "labels", "bend", "width", "head", "occupied", "highlight", "hide", "auto", "left", "right", "pulse", "fade", "radial", "sweep", "none", "arrows", "pins", "colors", "legend", "year", "all", "last", ...MAP_COLOR_NAMES, ...SYMBOLS, ...EASE_NAMES, ...FX_STYLES];
+const KEYWORDS = ["over", "as", "at", "to", "from", "sub", "by", "unit", "prefix", "suffix", "label", "beat", "radius", "size", "scale", "delay", "body", "paper", "mark", "theme", "photo", "step", "vignette", "off", "in", "out", "background", "text", "accent", "display", "radius", "grain", "caps", "on", "enter", "exit", "rotate", "ease", "curve", "opacity", "zoom", "tilt", "turn", "labels", "bend", "width", "head", "occupied", "highlight", "hide", "auto", "left", "right", "pulse", "fade", "radial", "sweep", "none", "arrows", "pins", "colors", "legend", "year", "all", "last", ...MAP_COLOR_NAMES, ...SYMBOLS, ...EASE_NAMES, ...FX_STYLES];
 const OBJ_CMDS = new Set(["move", "zoom", "scale", "fade", "caption", "source", "unverified", "rotate", "pulse", "wiggle"]);
 const LH = 20;
 const PAD = 12;

@@ -1,12 +1,14 @@
 import type { Assets, RenderCtx, Theme } from "@/render/types";
 import { HEIGHT, WIDTH, FPS } from "@/render/types";
 import { drawGrain } from "@/render/grain";
+import { paintFrame } from "@/render/background";
 import { renderPhotoZoom } from "@/render/scenes/photoZoom";
 import { renderStatCounter } from "@/render/scenes/statCounter";
 import { renderBarChart } from "@/render/scenes/barChart";
 import { renderLineChart } from "@/render/scenes/lineChart";
 import { renderHeadline } from "@/render/scenes/headlineHighlight";
 import { renderKineticText } from "@/render/scenes/kineticText";
+import { drawLowerThird, drawQuote, drawTitleCard } from "@/render/scenes/cards";
 import { alpha, bodyFont, fillRound } from "@/render/theme";
 import { wrapText } from "@/render/text";
 import { renderMap, drawAttack, drawRoute, drawPin, drawBubble, drawPlace, drawTag, drawYear, drawLegend, drawEffect } from "@/render/scenes/map";
@@ -45,8 +47,7 @@ export function renderTimeline(ctx: CanvasRenderingContext2D, tl: Timeline, them
   const k = opts?.scale ?? 1;
   ctx.setTransform(k, 0, 0, k, 0, 0);
   ctx.globalAlpha = 1;
-  ctx.fillStyle = theme.colors.background;
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  paintFrame(ctx, theme, WIDTH, HEIGHT);
   const cam = cameraAt(tl, t);
   for (const o of tl.objects) {
     if (!alive(o, t)) continue;
@@ -212,6 +213,9 @@ function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets
       renderKineticText(rc, { ...base, type: "KineticText", text, emphasis, wordsPerSecond: 1 / d.beat }, local);
       break;
     }
+    case "title": drawTitleCard(rc, d, local); break;
+    case "lower": drawLowerThird(rc, d, local); break;
+    case "quote": drawQuote(rc, d, local); break;
     case "arrow": drawArrow(ctx, d.a, d.b, p, theme); break;
     case "highlight": drawMarker(ctx, d.a, d.b, p, theme); break;
     case "circle": drawCircle(ctx, o.origin, d.r, p, theme); break;

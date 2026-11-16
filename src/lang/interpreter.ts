@@ -21,6 +21,7 @@ export const COMMANDS = [
   "highlight", "voice", "subtitle", "rotate", "camera", "shake", "pulse", "wiggle", "wipe", "push", "whip", "blur",
   "map", "fly", "country", "region", "attack", "route", "pin", "bubble", "label", "tag", "year", "legend", "remove",
   "cinematic", "effect", "clear", "clearregions", "rename", "unrename",
+  "title", "lower", "quote",
   "let", "repeat", "for", "end", "include",
 ];
 
@@ -46,6 +47,9 @@ const KW: Record<string, Record<string, number>> = {
   line: { unit: 1, at: 2 },
   headline: { body: 1, paper: 1, mark: 1, at: 2 },
   say: { at: 2, beat: 1 },
+  title: { at: 2, sub: 1 },
+  lower: { at: 2 },
+  quote: { at: 2, by: 1 },
   arrow: { from: 2, to: 2 },
   highlight: { from: 2, to: 2 },
   circle: { at: 2, radius: 1 },
@@ -438,6 +442,29 @@ export function interpret(src: string, opts: RunOptions = {}): Timeline {
         const paper = kw1(p, "paper") ? str(kw1(p, "paper")![1], "paper name", near) : "";
         const marks = (p.kw["mark"] ?? []).map((g) => str(g[1], "a phrase", g[0]));
         makeObj("headline", p, s, start, [W / 2, H / 2], [300, 150, 1320, 780], { headline, body, paper, marks });
+        return;
+      }
+      case "title": {
+        const text = str(src(0), "a title", near);
+        const subG = kw1(p, "sub");
+        const sub = subG ? str(subG[1], "a line under the title", subG[0]) : "";
+        makeObj("title", p, s, start, [W / 2, H / 2], [W / 2 - 820, H / 2 - 280, 1640, 560], { text, sub });
+        return;
+      }
+      case "lower": {
+        const name = str(src(0), "a name", near);
+        const roleArg = src(1);
+        const role = roleArg?.kind === "str" ? roleArg.v : "";
+        const h = role ? 150 : 104;
+        const w = Math.max(name.length * 58 * 0.55, role.length * 34 * 0.5) + 96;
+        makeObj("lower", p, s, start, [96, H - 120], [96, H - 120 - h, w, h], { name, role });
+        return;
+      }
+      case "quote": {
+        const text = str(src(0), "the quote", near);
+        const byG = kw1(p, "by");
+        const by = byG ? str(byG[1], "who said it", byG[0]) : "";
+        makeObj("quote", p, s, start, [W / 2, H / 2], [W / 2 - 700, H / 2 - 320, 1400, 640], { text, by });
         return;
       }
       case "say": {

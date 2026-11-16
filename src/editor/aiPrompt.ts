@@ -76,6 +76,9 @@ bars "Title" "Label A" 31 "Label B" 4000 over 3s enter rise
 line "Title" "2020" 1.0 "2021" 1.9 over 3s as price enter blur
 headline "Headline text" paper "PAPER NAME" body "Body text" mark "phrase to highlight" over 3s enter drop
 say "Text with *emphasis* on words" at 960 540 beat 0.4s enter blur
+title "Chapter *one*" sub "A smaller line under it"       (title or chapter card, centred)
+lower "Jane Doe" "Astrophysicist"                         (name plate, bottom left; the second text is optional)
+quote "Words worth *remembering*" by "Who said it"
 arrow from 300 900 to 500 800 over 0.5s
 highlight from 300 300 to 700 320 over 0.5s
 circle at 1500 560 radius 160 over 0.6s

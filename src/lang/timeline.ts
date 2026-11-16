@@ -3,7 +3,8 @@ import { makeProjection, type MapCam } from "@/render/geo";
 import { attackCurve } from "@/render/scenes/map";
 
 export type ObjKind = "photo" | "count" | "bars" | "line" | "headline" | "say" | "arrow" | "circle" | "box" | "highlight"
-  | "map" | "pin" | "bubble" | "label" | "tag" | "attack" | "route" | "year" | "legend" | "effect";
+  | "map" | "pin" | "bubble" | "label" | "tag" | "attack" | "route" | "year" | "legend" | "effect"
+  | "title" | "lower" | "quote";
 
 /** Map camera tracks stored on a map object: pos = [lat, lng]. */
 export interface MapCamTracks { pos: Track; zoom: Track; tilt: Track; turn: Track }

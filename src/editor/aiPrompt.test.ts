@@ -17,6 +17,10 @@ bars "Deaths" "Official" 31 "Estimate" 4000 over 3s enter rise
 line "Price" "2020" 1.0 "2021" 1.9 over 3s as price enter blur
 headline "A headline" paper "THE DAILY" body "Body" mark "headline" over 3s enter drop
 say "One *idea*" at 960 540 beat 0.4s enter blur
+title "Chapter *one*" sub "A smaller line"
+lower "Jane Doe" "Astrophysicist"
+lower "Only a name"
+quote "Words worth *remembering*" by "Someone"
 arrow from 300 900 to 500 800 over 0.5s
 highlight from 300 300 to 700 320 over 0.5s
 circle at 1500 560 radius 160 over 0.6s
