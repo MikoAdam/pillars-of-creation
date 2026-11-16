@@ -643,16 +643,33 @@ class MapRenderer {
         setTimeout(runOnce, 2000);
     }
 
+    attributionEntries(type = document.getElementById('styleSelect')?.value ?? 'minimal') {
+        const entries = [];
+        if (type === 'satellite') {
+            entries.push({ text: 'NASA Blue Marble / GIBS', url: 'https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api' });
+        }
+        if (type === 'vector' || type === 'liberty' || (type === 'satellite' && this._satelliteIsHybrid)) {
+            entries.push(
+                { text: 'OpenFreeMap', url: 'https://openfreemap.org/' },
+                { text: '© OpenMapTiles', url: 'https://www.openmaptiles.org/' },
+                { text: '© OpenStreetMap contributors', url: 'https://www.openstreetmap.org/copyright' }
+            );
+        }
+        entries.push({ text: 'Natural Earth', url: 'https://www.naturalearthdata.com/about/terms-of-use/' });
+        return entries;
+    }
+
     updateAttribution(type) {
         const el = document.querySelector('.map-attribution');
         if (!el) return;
-        if (type === 'satellite') {
-            el.innerHTML = '© <a href="https://earthdata.nasa.gov/gibs" target="_blank">NASA GIBS</a>';
-        } else if (type === 'minimal') {
-            el.innerHTML = '© <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a><br><a href="https://naturalearthdata.com" target="_blank">Natural Earth</a>';
-        } else {
-            el.innerHTML = '© <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a><br><a href="https://naturalearthdata.com" target="_blank">Natural Earth</a>';
-        }
+        el.replaceChildren(...this.attributionEntries(type).flatMap((entry, i) => {
+            const link = document.createElement('a');
+            link.href = entry.url;
+            link.textContent = entry.text;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            return i ? [document.createElement('br'), link] : [link];
+        }));
     }
 
     // ─── Hover layers ───

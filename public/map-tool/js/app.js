@@ -824,10 +824,7 @@ class App {
         }
 
         // 6. Attribution
-        const isSatellite = document.getElementById('styleSelect').value === 'satellite';
-        const attrLines = isSatellite
-            ? ['© NASA GIBS']
-            : ['© OpenFreeMap', 'Natural Earth'];
+        const attrLines = this.renderer.attributionEntries().map(entry => entry.text);
         const attrFontSize = 10 * dpr;
         ctx.font = `${attrFontSize}px sans-serif`;
         const attrLineH = attrFontSize * 1.4;
@@ -1080,10 +1077,7 @@ class App {
         }
 
         // Attribution
-        const isSatellite = document.getElementById('styleSelect').value === 'satellite';
-        const attrLines = isSatellite
-            ? ['© NASA GIBS']
-            : ['© OpenFreeMap', 'Natural Earth'];
+        const attrLines = this.renderer.attributionEntries().map(entry => entry.text);
         const attrFontSize = 10 * dpr;
         ctx.font = `${attrFontSize}px sans-serif`;
         const attrLineH = attrFontSize * 1.4;
