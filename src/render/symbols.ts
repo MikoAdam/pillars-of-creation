@@ -1,9 +1,10 @@
-/** Map symbols: a coloured round badge with a simple white glyph. Drawn around (0, 0). */
+/** Map symbols: a coloured round badge with a white icon. Drawn around (0, 0). */
+import { ICON_BOX, ICONS } from "./iconPack";
 
 export const SYMBOLS = [
   "explosion", "battle", "bombing", "fire", "skull", "nuke",
-  "tank", "troops", "plane", "naval",
-  "oil", "factory", "port",
+  "tank", "troops", "plane", "naval", "radar",
+  "oil", "factory", "port", "pipeline",
   "flag", "capital", "shield", "treaty", "uprising", "occupation",
 ] as const;
 export type SymbolName = (typeof SYMBOLS)[number];
@@ -20,8 +21,15 @@ function star(ctx: C, r: number, n = 5, inner = 0.45) {
   ctx.closePath();
 }
 
-/** Glyphs are drawn in a 24-unit box centred on 0,0, white. */
-const GLYPH: Record<SymbolName, (ctx: C) => void> = {
+const iconPaths = new Map<string, Path2D>();
+function iconPath(name: string) {
+  let p = iconPaths.get(name);
+  if (!p) { p = new Path2D(ICONS[name]); iconPaths.set(name, p); }
+  return p;
+}
+
+/** Stock glyphs for symbols the icon pack does not cover, drawn in a 24-unit box centred on 0,0, white. */
+const GLYPH: Partial<Record<SymbolName, (ctx: C) => void>> = {
   explosion: (c) => { star(c, 11, 8, 0.5); c.fill(); },
   battle: (c) => { c.beginPath(); c.moveTo(-8, -8); c.lineTo(8, 8); c.moveTo(8, -8); c.lineTo(-8, 8); c.stroke(); c.beginPath(); c.moveTo(-10, -4); c.lineTo(-4, -10); c.moveTo(10, -4); c.lineTo(4, -10); c.stroke(); },
   bombing: (c) => { c.beginPath(); c.arc(0, 0, 7, 0, Math.PI * 2); c.moveTo(0, -11); c.lineTo(0, 11); c.moveTo(-11, 0); c.lineTo(11, 0); c.stroke(); },
@@ -64,6 +72,11 @@ export function drawSymbol(ctx: C, name: SymbolName, color: string, r = 26) {
   ctx.lineWidth = 2.6;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  GLYPH[name](ctx);
+  if (ICONS[name]) {
+    const u = 23 / ICON_BOX;
+    ctx.scale(u, u);
+    ctx.translate(-ICON_BOX / 2, -ICON_BOX / 2);
+    ctx.fill(iconPath(name));
+  } else GLYPH[name]?.(ctx);
   ctx.restore();
 }

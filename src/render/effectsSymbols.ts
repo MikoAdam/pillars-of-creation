@@ -3,6 +3,8 @@
  * (Font Awesome Free icons, CC BY 4.0 / Tabler Icons, MIT), redrawn on canvas
  * via Path2D. All monochrome in the item colour.
  */
+import { ICON_BOX, ICONS } from "./iconPack";
+
 export interface EffectDef { label: string; category: string; vb: [number, number]; stroked: boolean; sw: number; paths: string[] }
 
 export const EFFECTS: Record<string, EffectDef> = {
@@ -71,3 +73,15 @@ export const EFFECTS: Record<string, EffectDef> = {
 
 export type EffectName = keyof typeof EFFECTS & string;
 export const EFFECT_NAMES = Object.keys(EFFECTS);
+
+/** The designer's icon pack replaces the stock art where it has an icon and adds the symbols the stock set lacked. */
+const PACK_ADDED: Record<string, { label: string; category: string }> = {
+  troops: { label: "Infantry", category: "military" },
+  radar: { label: "Radar", category: "military" },
+  pipeline: { label: "Pipeline", category: "resources" },
+};
+for (const [name, d] of Object.entries(ICONS)) {
+  const meta = EFFECTS[name] ?? PACK_ADDED[name];
+  if (meta) EFFECTS[name] = { label: meta.label, category: meta.category, vb: [ICON_BOX, ICON_BOX], stroked: false, sw: 2, paths: [d] };
+}
+

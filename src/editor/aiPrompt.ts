@@ -111,7 +111,7 @@ country slovenia green pulse           (animations: pulse fade radial sweep none
 region crimea ukraine red occupied     (region name, then its country)
 attack serbia croatia red bend 0.2 width 1.4     (arrow between two countries or "lat lng" places)
 route germany poland blue              (dashed connection line)
-pin 46.05 14.5 flag green              (symbols: explosion battle bombing fire skull nuke tank troops plane naval oil factory port flag capital shield treaty uprising occupation)
+pin 46.05 14.5 flag green              (symbols: explosion battle bombing fire skull nuke tank troops plane naval radar oil factory port pipeline flag capital shield treaty uprising occupation)
 bubble 44.35 19.3 "Caption text" red
 label 42.25 20.9 "Place" size 20
 tag 43.86 18.75 "NATO air campaign" left blue

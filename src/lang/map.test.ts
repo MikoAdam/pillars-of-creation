@@ -222,3 +222,18 @@ describe("included maps", () => {
   });
 });
 
+describe("symbols", () => {
+  it("every symbol name works as a pin, and pack icons work as effects", async () => {
+    const { SYMBOLS } = await import("@/render/symbols");
+    const { EFFECTS } = await import("@/render/effectsSymbols");
+    const { ICONS } = await import("@/render/iconPack");
+    const pins = SYMBOLS.map((s, i) => `pin ${40 + i} 10 ${s} red`).join("\n");
+    const r = run("map 45 15 zoom 4\n" + pins);
+    expect(r.ok, r.ok ? "" : r.error.message).toBe(true);
+    for (const name of Object.keys(ICONS)) expect(EFFECTS[name]?.paths[0]).toBe(ICONS[name]);
+    const fx = run("map 45 15 zoom 4\neffect: 50, 10, radar, red\neffect: 51, 10, pipeline, blue\neffect: 52, 10, troops, green");
+    if (!fx.ok) throw new Error(fx.error.message);
+    expect(fx.timeline.objects.filter((o) => o.kind === "effect").length).toBe(3);
+  });
+});
+

@@ -1,0 +1,122 @@
+// Traces design/icon-pack/*.jpg (black silhouettes on a light ground) into vector paths
+// and writes src/render/iconPack.ts. Run: node scripts/trace-icons.mjs
+import { readdirSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
+
+const SRC = "design/icon-pack";
+const OUT = "src/render/iconPack.ts";
+const MAP_TOOL = "public/map-tool/js/icon-pack.js";
+const SHEET = process.argv.includes("--sheet") ? "public/icon-check.html" : null;
+const VB = 100; // every icon is fitted into a 100 x 100 box, centred
+
+async function decode(file) {
+  const sharp = (await import("sharp")).default;
+  const { data, info } = await sharp(file).greyscale().raw().toBuffer({ resolveWithObject: true });
+  return { w: info.width, h: info.height, px: data };
+}
+
+/** Crack-following boundary trace: directed edges keep the shape on the left, so holes come out with the opposite turn. */
+function trace(mask, w, h) {
+  const fg = (x, y) => x >= 0 && y >= 0 && x < w && y < h && mask[y * w + x] === 1;
+  const key = (x, y) => y * (w + 1) + x;
+  const out = new Map(); // from vertex -> list of [toX, toY]
+  const add = (x1, y1, x2, y2) => { const k = key(x1, y1); (out.get(k) ?? out.set(k, []).get(k)).push([x2, y2]); };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!fg(x, y)) continue;
+    if (!fg(x, y - 1)) add(x + 1, y, x, y);         // top: walk west
+    if (!fg(x - 1, y)) add(x, y, x, y + 1);         // left: walk south
+    if (!fg(x, y + 1)) add(x, y + 1, x + 1, y + 1); // bottom: walk east
+    if (!fg(x + 1, y)) add(x + 1, y + 1, x + 1, y); // right: walk north
+  }
+  const loops = [];
+  const take = (x, y, dx, dy) => {
+    const list = out.get(key(x, y));
+    if (!list || !list.length) return null;
+    // prefer a left turn, then straight, then right: hugs the current region at checkerboard corners
+    let best = 0, bestScore = 9;
+    list.forEach(([tx, ty], i) => {
+      const ndx = tx - x, ndy = ty - y;
+      const cross = dx * ndy - dy * ndx; // screen coords: negative = left turn
+      const score = dx === 0 && dy === 0 ? 0 : cross < 0 ? 0 : cross === 0 ? 1 : 2;
+      if (score < bestScore) { bestScore = score; best = i; }
+    });
+    return list.splice(best, 1)[0];
+  };
+  for (const [k, list] of out) {
+    while (list.length) {
+      const sx = k % (w + 1), sy = Math.floor(k / (w + 1));
+      const loop = [[sx, sy]];
+      let x = sx, y = sy, dx = 0, dy = 0, n = 0;
+      for (;;) {
+        const next = take(x, y, dx, dy);
+        if (!next) break;
+        dx = next[0] - x; dy = next[1] - y;
+        x = next[0]; y = next[1];
+        if (x === sx && y === sy) break;
+        loop.push([x, y]);
+        if (++n > w * h * 4) break;
+      }
+      if (loop.length > 3) loops.push(loop);
+    }
+  }
+  return loops;
+}
+
+function simplify(pts, eps) {
+  if (pts.length < 4) return pts;
+  const d2 = (p, a, b) => {
+    const vx = b[0] - a[0], vy = b[1] - a[1], len2 = vx * vx + vy * vy || 1;
+    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / len2));
+    const qx = a[0] + t * vx - p[0], qy = a[1] + t * vy - p[1];
+    return qx * qx + qy * qy;
+  };
+  const keep = new Uint8Array(pts.length);
+  keep[0] = 1; keep[pts.length - 1] = 1;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop();
+    let idx = -1, max = eps * eps;
+    for (let i = a + 1; i < b; i++) { const d = d2(pts[i], pts[a], pts[b]); if (d > max) { max = d; idx = i; } }
+    if (idx > 0) { keep[idx] = 1; stack.push([a, idx], [idx, b]); }
+  }
+  return pts.filter((_, i) => keep[i]);
+}
+
+const area = (pts) => Math.abs(pts.reduce((s, p, i) => { const q = pts[(i + 1) % pts.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0) / 2);
+
+const icons = {};
+for (const f of readdirSync(SRC).filter((f) => f.endsWith(".jpg")).sort()) {
+  const name = basename(f, ".jpg");
+  const { w, h, px } = await decode(join(SRC, f));
+  const mask = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) mask[i] = px[i] < 128 ? 1 : 0;
+  let loops = trace(mask, w, h).map((l) => simplify(l, 0.85)).filter((l) => area(l) >= 6);
+  // fit into the box, centred, keeping the aspect ratio
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const l of loops) for (const [x, y] of l) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
+  const k = VB / Math.max(maxX - minX, maxY - minY);
+  const ox = (VB - (maxX - minX) * k) / 2, oy = (VB - (maxY - minY) * k) / 2;
+  const r1 = (v) => Math.round(v * 10) / 10;
+  const d = loops.map((l) => "M" + l.map(([x, y], i) => `${i ? "L" : ""}${r1((x - minX) * k + ox)} ${r1((y - minY) * k + oy)}`).join(" ") + "Z").join("");
+  icons[name] = d;
+  console.log(name.padEnd(10), `${w}x${h}`, "loops", loops.length, "points", loops.reduce((n, l) => n + l.length, 0));
+}
+
+const ts = `// Generated by scripts/trace-icons.mjs from design/icon-pack/*.jpg — the designer's icon pack
+// traced to vector outlines. Do not edit by hand; edit the source art and rerun the script.
+// Every icon is fitted into a ${VB} x ${VB} box, centred, and fills with the nonzero rule.
+
+export const ICON_BOX = ${VB};
+
+export const ICONS: Record<string, string> = {
+${Object.entries(icons).map(([n, d]) => `  ${n}: "${d}",`).join("\n")}
+};
+`;
+writeFileSync(OUT, ts);
+const sheet = `<!doctype html><meta charset="utf-8"><title>icon check</title><body style="font:14px system-ui;background:#f3f4f6;margin:24px">
+<p>Traced icons at 120 px and 28 px, filled with nonzero.</p>
+<div style="display:flex;flex-wrap:wrap;gap:18px">${Object.entries(icons).map(([n, d]) => `<div style="background:#fff;border-radius:12px;padding:12px;text-align:center;width:150px">
+<svg viewBox="0 0 ${VB} ${VB}" width="120" height="120"><path d="${d}" fill="#1d4ed8"/></svg><br><svg viewBox="0 0 ${VB} ${VB}" width="28" height="28"><path d="${d}" fill="#111"/></svg><div>${n}</div></div>`).join("")}</div></body>`;
+writeFileSync(MAP_TOOL, `// Generated by scripts/trace-icons.mjs from design/icon-pack/*.jpg. Do not edit by hand.\nconst ICON_PACK = ${JSON.stringify(icons, null, 2)};\n`);
+if (SHEET) writeFileSync(SHEET, sheet);
+console.log("wrote", OUT, "and", MAP_TOOL, SHEET ?? "");

@@ -170,3 +170,21 @@ class EffectsLibrary {
         return Object.keys(this.EFFECTS);
     }
 }
+
+// The designer's icon pack (js/icon-pack.js) replaces the stock art where it has an icon
+// and adds the symbols the stock set lacked.
+(function () {
+    if (typeof ICON_PACK === 'undefined') return;
+    const added = {
+        troops: { label: 'Infantry', category: 'military' },
+        radar: { label: 'Radar', category: 'military' },
+        pipeline: { label: 'Pipeline', category: 'resources' }
+    };
+    for (const [name, d] of Object.entries(ICON_PACK)) {
+        const svg = `<svg viewBox="0 0 100 100" fill="currentColor"><path d="${d}"/></svg>`;
+        const cur = EffectsLibrary.EFFECTS[name];
+        if (cur) cur.svg = svg;
+        else if (added[name]) EffectsLibrary.EFFECTS[name] = { label: added[name].label, cls: 'fx-' + name, category: added[name].category, svg };
+    }
+})();
+
