@@ -155,3 +155,51 @@ export function drawQuote(rc: RenderCtx, d: { text: string; by: string }, local:
   }
   ctx.restore();
 }
+
+/**
+ * End credits: an optional heading, then role / name rows on either side of a centre line.
+ * Standing still the rows rise in one by one; with `roll` the whole block travels up through
+ * the frame as p goes 0..1, like film credits.
+ */
+export function drawCredits(rc: RenderCtx, d: { heading: string; rows: { role: string; name: string }[]; roll: boolean }, local: number, p: number) {
+  const { ctx, theme, width: W, height: H } = rc;
+  const headSize = 76, rowH = 74, gap = 28;
+  const headH = d.heading ? headSize * 1.1 + 64 : 0;
+  const blockH = headH + d.rows.length * rowH;
+  const top = d.roll ? H + 40 - p * (blockH + H + 80) : H / 2 - blockH / 2;
+  ctx.save();
+  ctx.textBaseline = "middle";
+  if (d.heading) {
+    const a = d.roll ? 1 : theme.easing.enter(prog(local, 0, 0.6));
+    ctx.save();
+    ctx.globalAlpha *= a;
+    ctx.font = displayFont(theme, headSize);
+    ctx.textAlign = "center";
+    ctx.fillStyle = theme.colors.text;
+    ctx.fillText(displayText(theme, d.heading), W / 2, top + headSize * 0.55 + (1 - a) * 24);
+    ctx.fillStyle = theme.colors.accent;
+    fillRound(ctx, W / 2 - 60 * a, top + headSize * 1.1 + 18, 120 * a, 8, theme.radius ? 4 : 0);
+    ctx.restore();
+  }
+  d.rows.forEach((r, i) => {
+    const y = top + headH + i * rowH + rowH / 2;
+    if (y < -rowH || y > H + rowH) return;
+    const a = d.roll ? 1 : theme.easing.enter(prog(local, 0.35 + i * 0.12, 0.5));
+    if (a <= 0) return;
+    ctx.save();
+    ctx.globalAlpha *= a;
+    ctx.translate(0, (1 - a) * 18);
+    if (r.role) {
+      ctx.font = bodyFont(theme, 34, 500);
+      ctx.textAlign = "right";
+      ctx.fillStyle = alpha(theme.colors.text, 0.62);
+      ctx.fillText(r.role, W / 2 - gap, y);
+    }
+    ctx.font = bodyFont(theme, 40, 700);
+    ctx.textAlign = r.role ? "left" : "center";
+    ctx.fillStyle = theme.colors.text;
+    ctx.fillText(r.name, r.role ? W / 2 + gap : W / 2, y);
+    ctx.restore();
+  });
+  ctx.restore();
+}

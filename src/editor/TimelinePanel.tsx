@@ -6,14 +6,15 @@ const NOUN: Partial<Record<ObjKind, string>> = {
   photo: "Photo", count: "Counter", bars: "Bar chart", line: "Line chart", headline: "Headline", say: "Text",
   arrow: "Arrow", circle: "Circle", box: "Box", highlight: "Highlight", map: "Map", pin: "Symbol", effect: "Symbol",
   bubble: "Bubble", label: "Label", tag: "Tag", attack: "Attack", route: "Line", year: "Year", legend: "Legend",
-  title: "Title", lower: "Lower third", quote: "Quote",
+  title: "Title", lower: "Lower third", quote: "Quote", credits: "Credits", icon: "Icon", image: "Picture",
 };
 
 function labelOf(o: TObj) {
   if (o.locked && o.from && o.kind === "map") return `Map: ${o.from}`;
   const noun = NOUN[o.kind];
   if (!noun || o.id.replace(/\d+$/, "") !== o.kind) return o.id;
-  const text = typeof o.data?.text === "string" ? o.data.text : typeof o.data?.name === "string" ? o.data.name : typeof o.data?.label === "string" ? o.data.label : "";
+  const text = typeof o.data?.text === "string" ? o.data.text : typeof o.data?.name === "string" ? o.data.name : typeof o.data?.label === "string" ? o.data.label
+    : typeof o.data?.heading === "string" ? o.data.heading : typeof o.data?.symbol === "string" ? o.data.symbol : typeof o.data?.asset === "string" ? o.data.asset : "";
   return text ? `${noun}: ${text.length > 24 ? text.slice(0, 23) + "…" : text}` : noun;
 }
 

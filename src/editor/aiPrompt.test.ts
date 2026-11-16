@@ -21,6 +21,11 @@ title "Chapter *one*" sub "A smaller line"
 lower "Jane Doe" "Astrophysicist"
 lower "Only a name"
 quote "Words worth *remembering*" by "Someone"
+credits "Thanks for watching" "Script" "Jane Doe" "Music" "A. Composer" over 8s
+credits "Script" "Jane Doe"
+icon tank at 960 540 size 240 color red as armour enter pop
+icon radar
+image @logo at 1600 160 size 300
 music @song volume 0.3
 arrow from 300 900 to 500 800 over 0.5s
 highlight from 300 300 to 700 320 over 0.5s
@@ -96,6 +101,40 @@ remove arrows
     expect(AI_PROMPT).toContain(EXAMPLE_SCRIPT.trim());
     expect(AI_PROMPT).toContain("ONE code block");
     expect(AI_PROMPT).toContain("goldenrod");
+  });
+});
+
+describe("credits, icons and pictures", () => {
+  const tl = (src: string, opts = {}) => {
+    const r = run(src, opts);
+    if (!r.ok) throw new Error(r.error.message);
+    return r.timeline;
+  };
+  it("credits take a heading and role/name pairs, and roll only with over", () => {
+    const still = tl('credits "The end" "Script" "Jane" "Music" "Ann"').objects[0]!;
+    expect(still.data.heading).toBe("The end");
+    expect(still.data.rows).toEqual([{ role: "Script", name: "Jane" }, { role: "Music", name: "Ann" }]);
+    expect(still.data.roll).toBe(false);
+    const rolling = tl('credits "Script" "Jane" over 6s').objects[0]!;
+    expect(rolling.data.heading).toBe("");
+    expect(rolling.data.roll).toBe(true);
+  });
+  it("an icon keeps its place, size and colour", () => {
+    const o = tl("icon tank at 400 300 size 200 color red").objects[0]!;
+    expect(o.kind).toBe("icon");
+    expect(o.pos.base).toEqual([400, 300]);
+    expect(o.box[2]).toBe(200);
+    expect(o.data.color).toBe("#dc2626");
+  });
+  it("an unknown icon is an error that lists the names", () => {
+    const r = run("icon unicorn");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.message).toContain("tank");
+  });
+  it("a picture takes the shape of its file once the size is known", () => {
+    const o = tl("image @logo size 400", { assetSize: () => [800, 200] as [number, number] }).objects[0]!;
+    expect(o.box[2]).toBe(400);
+    expect(o.box[3]).toBe(100);
   });
 });
 

@@ -43,7 +43,7 @@ pin 45.35 19.0 battle red delay 1s
 legend "Croatia" blue
 wait 2.8s
 
-fly 44.1 19.2 zoom 6.6 tilt 35 over 2s
+fly 44.1 19.2 zoom 6.6 over 2s
 year "1995" highlight
 bubble 44.35 19.3 "Srebrenica, July 1995" red delay 0.4s
 wait 3.5s
@@ -79,6 +79,9 @@ say "Text with *emphasis* on words" at 960 540 beat 0.4s enter blur
 title "Chapter *one*" sub "A smaller line under it"       (title or chapter card, centred)
 lower "Jane Doe" "Astrophysicist"                         (name plate, bottom left; the second text is optional)
 quote "Words worth *remembering*" by "Who said it"
+credits "Thanks for watching" "Script" "Jane Doe" "Music" "A. Composer" over 8s    (end credits: a heading, then role and name pairs; with "over" they roll up the screen, without it they stand still)
+icon tank at 960 540 size 240 color red as armour enter pop    (a library icon placed like a shape; names are the map symbols listed under MAPS; the colour is optional)
+image @logo at 1600 160 size 300                        (an uploaded picture placed like a shape; size is its width)
 music @track volume 0.3            (background music from an uploaded audio file; loops under the whole video)
 arrow from 300 900 to 500 800 over 0.5s
 highlight from 300 300 to 700 320 over 0.5s
@@ -104,9 +107,9 @@ Entrance and exit styles (enter X / exit X): fade pop rise drop slide_left slide
 Easing names (ease X): smooth linear in out snap overshoot spring bounce
 
 MAPS (only if the script is about places)
-map 44 18 zoom 5.2 as balkans          (lat lng, decimal degrees; optional tilt 35 turn 10 labels off)
+map 44 18 zoom 5.2 as balkans          (lat lng, decimal degrees; optional: labels off)
 map france                             (start on a country, auto-framed)
-fly 44.1 19.2 zoom 6.6 tilt 35 over 2s
+fly 44.1 19.2 zoom 6.6 over 2s
 country slovenia green pulse           (animations: pulse fade radial sweep none)
 region crimea ukraine red occupied     (region name, then its country)
 attack serbia croatia red bend 0.2 width 1.4     (arrow between two countries or "lat lng" places)

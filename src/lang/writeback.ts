@@ -284,5 +284,5 @@ export function writeReverse(code: string, o: TObj): string {
 export function writeColor(code: string, o: TObj, value: string): string {
   const sp = o.data.colorSpan as Span | undefined;
   if (sp) return applyEdits(code, [{ span: sp, text: value }]);
-  return appendToCreate(code, o, ` ${value}`);
+  return appendToCreate(code, o, o.kind === "icon" ? ` color ${value}` : ` ${value}`);
 }

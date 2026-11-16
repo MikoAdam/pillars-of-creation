@@ -21,11 +21,15 @@ export const COMMANDS = [
   "highlight", "voice", "subtitle", "rotate", "camera", "shake", "pulse", "wiggle", "wipe", "push", "whip", "blur",
   "map", "fly", "country", "region", "attack", "route", "pin", "bubble", "label", "tag", "year", "legend", "remove",
   "cinematic", "effect", "clear", "clearregions", "rename", "unrename",
-  "title", "lower", "quote", "music",
+  "title", "lower", "quote", "music", "credits", "icon", "image",
   "let", "repeat", "for", "end", "include",
 ];
 
-export interface RunOptions { resolveMap?: (name: string) => string | undefined }
+export interface RunOptions {
+  resolveMap?: (name: string) => string | undefined;
+  /** pixel size of an uploaded image, when it has loaded: gives `image` its true shape */
+  assetSize?: (name: string) => [number, number] | undefined;
+}
 
 export type RunResult =
   | { ok: true; timeline: Timeline }
@@ -51,6 +55,9 @@ const KW: Record<string, Record<string, number>> = {
   title: { at: 2, sub: 1 },
   lower: { at: 2 },
   quote: { at: 2, by: 1 },
+  credits: { at: 2 },
+  icon: { at: 2, size: 1, color: 1 },
+  image: { at: 2, size: 1 },
   arrow: { from: 2, to: 2 },
   highlight: { from: 2, to: 2 },
   circle: { at: 2, radius: 1 },
@@ -474,6 +481,38 @@ export function interpret(src: string, opts: RunOptions = {}): Timeline {
         const byG = kw1(p, "by");
         const by = byG ? str(byG[1], "who said it", byG[0]) : "";
         makeObj("quote", p, s, start, [W / 2, H / 2], [W / 2 - 700, H / 2 - 320, 1400, 640], { text, by });
+        return;
+      }
+      case "credits": {
+        // credits "Heading" "Role" "Name" "Role" "Name" ... ; with "over" they roll, without they stand still
+        const texts = p.pos.map((a) => str(a, "credit text", near));
+        if (!texts.length) err('credits needs text: credits "Heading" "Role" "Name" ...', near);
+        const heading = texts.length % 2 === 1 ? texts[0] : "";
+        const rest = texts.length % 2 === 1 ? texts.slice(1) : texts;
+        const rows: { role: string; name: string }[] = [];
+        for (let i = 0; i < rest.length; i += 2) rows.push({ role: rest[i], name: rest[i + 1] });
+        makeObj("credits", p, s, start, [W / 2, H / 2], [W / 2 - 700, H / 2 - 420, 1400, 840], { heading, rows, roll: !!kw1(p, "over") });
+        return;
+      }
+      case "icon": {
+        const sym = word(src(0), "an icon name", near);
+        if (!EFFECTS[sym]) err(`Unknown icon "${sym}". Use ${Object.keys(EFFECTS).join(", ")}`, src(0)!);
+        const sg = kw1(p, "size");
+        const size = sg ? Math.max(8, num(sg[1], "a size in pixels", sg[0]).v) : 240;
+        const cg = kw1(p, "color");
+        const o = makeObj("icon", p, s, start, [W / 2, H / 2], [W / 2 - size / 2, H / 2 - size / 2, size, size], { symbol: sym, size, color: cg ? color(cg[1], s) : "" });
+        if (cg) o.data.colorSpan = [cg[1].tok.start, cg[1].tok.end];
+        return;
+      }
+      case "image": {
+        const a = src(0);
+        if (!a || a.kind !== "asset") err("Expected an @image name after image", a ?? near);
+        const name = (a as any).name as string;
+        const sg = kw1(p, "size");
+        const size = sg ? Math.max(8, num(sg[1], "a width in pixels", sg[0]).v) : 600;
+        const dim = opts.assetSize?.(name);
+        const h = dim && dim[0] > 0 ? (size * dim[1]) / dim[0] : size;
+        makeObj("image", p, s, start, [W / 2, H / 2], [W / 2 - size / 2, H / 2 - h / 2, size, h], { asset: name, size });
         return;
       }
       case "say": {
