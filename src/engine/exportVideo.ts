@@ -19,6 +19,7 @@ export interface ExportJob {
   timeline: Timeline; theme: Theme; assets: Assets;
   format: ExportFormat; from: number; to: number;
   voice?: Blob | undefined;
+  music?: { blob: Blob; volume: number } | undefined;
   onProgress: (p: ExportProgress) => void;
   signal: AbortSignal;
 }
@@ -55,18 +56,29 @@ export function makeFramePainter(tl: Timeline, theme: Theme, assets: Assets, for
   return { canvas, paint };
 }
 
-async function decodeRange(blob: Blob, from: number, to: number) {
+/** Voiceover and music for the range, mixed to one stereo buffer; the music loops under the voice. */
+async function mixAudio(voice: Blob | undefined, music: { blob: Blob; volume: number } | undefined, from: number, to: number): Promise<AudioBuffer | null> {
+  if (!voice && !music) return null;
   const ac = new AudioContext();
-  const buf = await ac.decodeAudioData(await blob.arrayBuffer());
+  const dec = async (b: Blob) => ac.decodeAudioData(await b.arrayBuffer());
+  const v = voice ? await dec(voice) : null;
+  const m = music ? await dec(music.blob) : null;
   void ac.close();
-  const sr = buf.sampleRate, len = Math.max(1, Math.round((to - from) * sr));
-  const out = new AudioBuffer({ length: len, numberOfChannels: buf.numberOfChannels, sampleRate: sr });
-  const s0 = Math.round(from * sr);
-  for (let c = 0; c < buf.numberOfChannels; c++) {
-    const part = buf.getChannelData(c).subarray(s0, Math.min(buf.length, s0 + len));
-    out.copyToChannel(part, c, 0);
+  const sr = 48000, len = Math.max(1, Math.round((to - from) * sr));
+  const off = new OfflineAudioContext(2, len, sr);
+  if (v) {
+    const s = off.createBufferSource();
+    s.buffer = v; s.connect(off.destination);
+    s.start(0, Math.min(from, v.duration));
   }
-  return out;
+  if (m && music) {
+    const g = off.createGain();
+    g.gain.value = music.volume; g.connect(off.destination);
+    const s = off.createBufferSource();
+    s.buffer = m; s.loop = true; s.connect(g);
+    s.start(0, m.duration ? from % m.duration : 0);
+  }
+  return off.startRendering();
 }
 
 /** Export to MP4 with WebCodecs, or WebM in real time when WebCodecs is missing. */
@@ -81,8 +93,9 @@ export async function exportVideo(job: ExportJob): Promise<{ blob: Blob; ext: "m
   const video = new CanvasSource(canvas, { codec: vCodec, bitrate: QUALITY_HIGH });
   output.addVideoTrack(video, { frameRate: FPS });
   let audio: AudioBufferSource | null = null;
-  const aCodec = job.voice ? await getFirstEncodableAudioCodec(new Mp4OutputFormat().getSupportedAudioCodecs()) : null;
-  if (job.voice && aCodec) { audio = new AudioBufferSource({ codec: aCodec, bitrate: QUALITY_HIGH }); output.addAudioTrack(audio); }
+  const wantAudio = !!(job.voice || job.music);
+  const aCodec = wantAudio ? await getFirstEncodableAudioCodec(new Mp4OutputFormat().getSupportedAudioCodecs()) : null;
+  if (wantAudio && aCodec) { audio = new AudioBufferSource({ codec: aCodec, bitrate: QUALITY_HIGH }); output.addAudioTrack(audio); }
   await output.start();
 
   const frames = frameCount(job.from, job.to);
@@ -96,7 +109,7 @@ export async function exportVideo(job: ExportJob): Promise<{ blob: Blob; ext: "m
       job.onProgress({ frame: i + 1, frames, elapsed, eta: (elapsed / (i + 1)) * (frames - i - 1) });
     }
   }
-  if (audio && job.voice) await audio.add(await decodeRange(job.voice, job.from, job.to));
+  if (audio) { const mix = await mixAudio(job.voice, job.music, job.from, job.to); if (mix) await audio.add(mix); }
   await output.finalize();
   return { blob: new Blob([output.target.buffer!], { type: "video/mp4" }), ext: "mp4" };
 }
@@ -106,12 +119,12 @@ async function exportRealtime(job: ExportJob): Promise<{ blob: Blob; ext: "webm"
   const { canvas, paint } = makeFramePainter(job.timeline, job.theme, job.assets, job.format);
   const stream = canvas.captureStream(FPS);
   let ac: AudioContext | null = null;
-  if (job.voice) {
+  const mix = await mixAudio(job.voice, job.music, job.from, job.to);
+  if (mix) {
     ac = new AudioContext();
-    const buf = await decodeRange(job.voice, job.from, job.to);
     const dest = ac.createMediaStreamDestination();
     const node = ac.createBufferSource();
-    node.buffer = buf; node.connect(dest); node.start();
+    node.buffer = mix; node.connect(dest); node.start();
     dest.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
   }
   const rec = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm", videoBitsPerSecond: 12_000_000 });

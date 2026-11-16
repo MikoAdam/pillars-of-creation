@@ -7,6 +7,7 @@ import { downloadBlob, exportVideo, frameCount, type ExportFormat, type ExportPr
 interface Props {
   timeline: Timeline; theme: Theme; assets: Assets;
   voice?: Blob | undefined;
+  music?: { blob: Blob; volume: number } | undefined;
   onClose: () => void;
 }
 
@@ -17,7 +18,7 @@ const FORMATS: { id: ExportFormat; label: string; hint: string }[] = [
 ];
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-export function ExportDialog({ timeline, theme, assets, voice, onClose }: Props) {
+export function ExportDialog({ timeline, theme, assets, voice, music, onClose }: Props) {
   const total = Math.round(timeline.duration * 10) / 10;
   const [format, setFormat] = useState<ExportFormat>("1080p");
   const [part, setPart] = useState(false);
@@ -38,7 +39,7 @@ export function ExportDialog({ timeline, theme, assets, voice, onClose }: Props)
     abort.current = ac;
     setProg({ frame: 0, frames: frameCount(r0, r1), elapsed: 0, eta: 0 });
     try {
-      const { blob, ext } = await exportVideo({ timeline, theme, assets, format, from: r0, to: r1, voice, onProgress: setProg, signal: ac.signal });
+      const { blob, ext } = await exportVideo({ timeline, theme, assets, format, from: r0, to: r1, voice, music, onProgress: setProg, signal: ac.signal });
       const base = (timeline.title || "video").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "video";
       setResult({ blob, name: `${base}-${format}${part ? `-${fmt(r0).replace(":", "m")}` : ""}.${ext}` });
     } catch (e) {
@@ -79,7 +80,7 @@ export function ExportDialog({ timeline, theme, assets, voice, onClose }: Props)
           </div>
         )}
         <p className="mb-4 text-xs text-muted-foreground">
-          {fmt(r1 - r0)} long, {frameCount(r0, r1)} frames at 30 fps{voice ? ", with voiceover" : ""}.
+          {fmt(r1 - r0)} long, {frameCount(r0, r1)} frames at 30 fps{voice ? ", with voiceover" : ""}{music ? ", with music" : ""}.
         </p>
 
         {prog && (

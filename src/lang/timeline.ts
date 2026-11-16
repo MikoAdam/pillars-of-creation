@@ -133,6 +133,8 @@ export interface Timeline {
   camera: Camera;
   /** voiceover audio asset name (plays from 0s) */
   voice?: string | undefined;
+  /** background music asset and its volume 0..1; loops under the video */
+  music?: { name: string; volume: number } | undefined;
   /** timed subtitle lines, absolute seconds */
   subs?: { t0: number; t1: number; text: string; line: number }[];
 }

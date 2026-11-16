@@ -21,6 +21,7 @@ title "Chapter *one*" sub "A smaller line"
 lower "Jane Doe" "Astrophysicist"
 lower "Only a name"
 quote "Words worth *remembering*" by "Someone"
+music @song volume 0.3
 arrow from 300 900 to 500 800 over 0.5s
 highlight from 300 300 to 700 320 over 0.5s
 circle at 1500 560 radius 160 over 0.6s

@@ -82,6 +82,7 @@ function Studio() {
   const [voiceProgress, setVoiceProgress] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const musicRef = useRef<HTMLAudioElement>(null);
   useEffect(() => { void loadAudio().then(setVoices); }, []);
 
   // load autosave (a handoff from the classic Map Creator at /map-tool/ wins once, if present).
@@ -147,12 +148,14 @@ function Studio() {
   const [promptCopied, setPromptCopied] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const projectInput = useRef<HTMLInputElement>(null);
+  const saveRef = useRef<() => void>(() => {});
   const saveProject = () => {
     const maps = Object.fromEntries(listMaps().map((n) => [n, getMapCode(n) ?? ""]));
     const data = { app: "pillars-of-creation", version: 1, title: timeline.title, code: hist.codeRef.current, maps, media: media.filter((m) => !m.builtin) };
     const base = (timeline.title || "project").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "project";
     downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), `${base}.pillars.json`);
   };
+  saveRef.current = saveProject;
   const openProject = async (f: File) => {
     try {
       const d = JSON.parse(await f.text()) as { code?: unknown; maps?: Record<string, unknown>; media?: unknown };
@@ -217,22 +220,41 @@ function Studio() {
     setPlaying((p) => !p);
   }, [playing, total, seek]);
 
-  // voiceover follows the playhead
+  // voiceover and music follow the playhead; music loops
   const voice = voices.find((v) => v.name === timeline.voice);
+  const music = voices.find((v) => v.name === timeline.music?.name);
+  const musicVolume = timeline.music?.volume ?? 0.3;
+  const musicTime = (a: HTMLAudioElement, t: number) => (a.duration ? t % a.duration : t);
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
     if (playing && voice) { a.currentTime = tRef.current; void a.play().catch(() => {}); } else a.pause();
   }, [playing, voice]);
+  useEffect(() => {
+    const a = musicRef.current;
+    if (!a) return;
+    a.volume = musicVolume;
+    if (playing && music) { a.currentTime = musicTime(a, tRef.current); void a.play().catch(() => {}); } else a.pause();
+  }, [playing, music, musicVolume]);
   const scrub = useCallback((v: number) => {
     seek(v);
     const a = audioRef.current;
     if (a && playing) a.currentTime = v;
+    const m = musicRef.current;
+    if (m && playing) m.currentTime = musicTime(m, v);
   }, [seek, playing]);
 
   const appendLines = (base: string, lines: string) => base.replace(/\s*$/, "") + "\n\n" + lines + "\n";
   const useVoice = (name: string, base = hist.codeRef.current) =>
     /^voice\s+@\S+/m.test(base) ? base.replace(/^voice\s+@\S+/m, `voice @${name}`) : appendLines(base, `voice @${name}`);
+  const useMusic = (name: string, base = hist.codeRef.current) =>
+    /^music\s+@\S+/m.test(base) ? base.replace(/^music\s+@\S+/m, `music @${name}`) : appendLines(base, `music @${name} volume 0.3`);
+  const uploadMusic = async (f: File) => {
+    const name = uniqueName(f.name, [...voices.map((v) => v.name), ...media.map((m) => m.name)]);
+    try { await saveAudio(name, f); } catch { setNotice("Couldn't save the audio in this browser; it will be lost on reload."); }
+    setVoices((v) => [...v, { name, blob: f as Blob, url: URL.createObjectURL(f) }]);
+    hand(useMusic(name));
+  };
   const makeSubtitles = (name: string) => {
     const item = voicesRef.current.find((v) => v.name === name);
     if (item) void makeSubtitlesFor(item);
@@ -280,6 +302,7 @@ function Studio() {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? hist.redo() : hist.undo(); return; }
       if (mod && e.key.toLowerCase() === "y") { e.preventDefault(); hist.redo(); return; }
+      if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); saveRef.current(); return; }
       if (e.code === "Space") { e.preventDefault(); toggle(); return; }
       if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
         e.preventDefault();
@@ -461,7 +484,8 @@ function Studio() {
         </div>
       )}
       {voice && <audio ref={audioRef} src={voice.url} preload="auto" hidden />}
-      {exporting && <ExportDialog timeline={timeline} theme={theme} assets={assets} voice={voice?.blob} onClose={() => setExporting(false)} />}
+      {music && <audio ref={musicRef} src={music.url} preload="auto" loop hidden />}
+      {exporting && <ExportDialog timeline={timeline} theme={theme} assets={assets} voice={voice?.blob} music={music && timeline.music ? { blob: music.blob, volume: timeline.music.volume } : undefined} onClose={() => setExporting(false)} />}
       {pasteOpen && (
         <PasteScript
           resolveMap={getMapCode}
@@ -550,9 +574,12 @@ function Studio() {
           <VoicePanel
             voices={voices}
             active={timeline.voice}
+            activeMusic={timeline.music?.name}
             status={voiceStatus}
             progress={voiceProgress}
             onUpload={(f) => void uploadVoice(f)}
+            onUploadMusic={(f) => void uploadMusic(f)}
+            onMusic={(n) => hand(useMusic(n))}
             onUse={(n) => hand(useVoice(n))}
             onSubtitles={makeSubtitles}
             onRemove={(n) => { setVoices((v) => v.filter((x) => x.name !== n)); void deleteAudio(n); }}

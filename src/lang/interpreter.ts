@@ -21,7 +21,7 @@ export const COMMANDS = [
   "highlight", "voice", "subtitle", "rotate", "camera", "shake", "pulse", "wiggle", "wipe", "push", "whip", "blur",
   "map", "fly", "country", "region", "attack", "route", "pin", "bubble", "label", "tag", "year", "legend", "remove",
   "cinematic", "effect", "clear", "clearregions", "rename", "unrename",
-  "title", "lower", "quote",
+  "title", "lower", "quote", "music",
   "let", "repeat", "for", "end", "include",
 ];
 
@@ -47,6 +47,7 @@ const KW: Record<string, Record<string, number>> = {
   line: { unit: 1, at: 2 },
   headline: { body: 1, paper: 1, mark: 1, at: 2 },
   say: { at: 2, beat: 1 },
+  music: { volume: 1 },
   title: { at: 2, sub: 1 },
   lower: { at: 2 },
   quote: { at: 2, by: 1 },
@@ -360,6 +361,14 @@ export function interpret(src: string, opts: RunOptions = {}): Timeline {
         const a = src(0);
         if (!a || a.kind !== "asset") err("Expected an @audio name after voice", a ?? near);
         tl.voice = (a as { name: string }).name;
+        return;
+      }
+      case "music": {
+        const a = src(0);
+        if (!a || a.kind !== "asset") err("Expected an @audio name after music", a ?? near);
+        const vg = kw1(p, "volume");
+        const vol = vg ? num(vg[1], "volume 0..1", vg[0]).v : 0.3;
+        tl.music = { name: (a as { name: string }).name, volume: Math.min(1, Math.max(0, vol)) };
         return;
       }
       case "subtitle": {

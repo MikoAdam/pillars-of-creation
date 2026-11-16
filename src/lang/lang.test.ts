@@ -126,3 +126,16 @@ describe("accented names and the active block", () => {
     expect([...activeLinesAt(r.timeline, 2.5)].sort()).toEqual([3, 4]);
   });
 });
+
+describe("music", () => {
+  it("sets the background track and clamps the volume to 1", () => {
+    const r = run('project "x"\nmusic @song volume 1.4\nsay "hi"');
+    expect(r.ok, r.ok ? "" : r.error.message).toBe(true);
+    if (r.ok) expect(r.timeline.music).toEqual({ name: "song", volume: 1 });
+  });
+  it("defaults the volume to 0.3", () => {
+    const r = run('project "x"\nmusic @song');
+    if (r.ok) expect(r.timeline.music?.volume).toBe(0.3);
+  });
+});
+
