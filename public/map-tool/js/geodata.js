@@ -82,7 +82,7 @@ class GeoData {
     }
 
     async load() {
-        const cacheKey = 'poc-maps-geodata-v5';
+        const cacheKey = 'poc-maps-geodata-v6';
 
         // Try cache first
         const cached = localStorage.getItem(cacheKey);

@@ -4,7 +4,7 @@ import { parse, type Arg, type Expr, type Span, type Stmt } from "./parser";
 import { CSS_COLOR_NAMES, MAP_COLORS, MAP_COLOR_NAMES, findCountry, findRegion, fitBbox, geoReady, normName, suggest, territoriesOf, type GeoFeature } from "@/render/geo";
 import { EFFECTS, type EffectName } from "@/render/effectsSymbols";
 import { SYMBOLS, type SymbolName } from "@/render/symbols";
-import type { MapFill } from "@/render/scenes/map";
+import { CARD_SCALE, type MapFill } from "@/render/scenes/map";
 import { addSeg, emptyCamera, sample, EASES, EASE_NAMES, FX_STYLES, type FxStyle, type ObjKind, type Seg, type TObj, type Timeline, type Track, type Trans } from "./timeline";
 
 export const THEME_NAMES: Record<string, string> = {
@@ -714,12 +714,12 @@ export function interpret(src: string, opts: RunOptions = {}): Timeline {
   const measureBubble = (text: string) => {
     // dark card: 20px text, padding 21x29, max width 506px (380 CSS px scaled)
     const lines = Math.max(1, Math.ceil((text.length * 10.4) / 448));
-    return { w: Math.min(506, Math.max(160, text.length * 10.4 + 58)), h: lines * 32 + 42 };
+    return { w: Math.min(506, Math.max(160, text.length * 10.4 + 58)) * CARD_SCALE, h: (lines * 32 + 42) * CARD_SCALE };
   };
   const measureSubtitle = (text: string) => {
     // subtitle bubble: fixed 72% width capped at 1146px, bottom-centre
     const lines = Math.max(1, Math.ceil((text.length * 10.4) / 1060));
-    return { w: 1146, h: lines * 34 + 42 };
+    return { w: 1146 * CARD_SCALE, h: (lines * 34 + 42) * CARD_SCALE };
   };
   const nearOf = (s: Extract<Stmt, { kind: "cmd" }>) => ({ tok: s.nameTok });
 
@@ -774,7 +774,10 @@ export function interpret(src: string, opts: RunOptions = {}): Timeline {
     const m = needMap(s);
     const o = makeObj(kind, p, s, start, [0, 0], [0, 0, 0, 0], { geo: true, map: m, ...data });
     mapElems.push(o);
-    if (kind === "pin" || kind === "bubble" || kind === "label" || kind === "tag" || kind === "effect") markerStack.push(o);
+    if (kind === "pin" || kind === "bubble" || kind === "label" || kind === "tag" || kind === "effect") {
+      markerStack.push(o);
+      (m.data.markers ??= []).push(o); // country names keep clear of these
+    }
     return o;
   }
 
@@ -1046,7 +1049,7 @@ export function interpret(src: string, opts: RunOptions = {}): Timeline {
           colorArg = A[3];
           data = { ...data, text, color: color(colorArg, s, "#4cd964") };
           const lay = measureBubble(text);
-          rel = [-lay.w / 2, -lay.h - 13, lay.w, lay.h + 13];
+          rel = [-lay.w / 2, -lay.h - 13 * CARD_SCALE, lay.w, lay.h + 13 * CARD_SCALE];
         } else if (s.name === "label") {
           const text = str(A[2], "label text", A[1] ?? near);
           const size = kw1(p, "size") ? num(kw1(p, "size")![1], "size", kw1(p, "size")![0]).v : s.legacy ? 14 : 18;
@@ -1060,8 +1063,8 @@ export function interpret(src: string, opts: RunOptions = {}): Timeline {
           if (dir !== "left" && dir !== "right") err("Use left or right", A[3]);
           colorArg = A[4];
           data = { ...data, text, dir, color: color(colorArg, s, s.legacy ? "#ffffff" : MAP_COLORS["red"]) };
-          const cw = Math.min(426, text.length * 10 + 48), ch = 60;
-          rel = dir === "right" ? [0, -ch / 2, 80 + cw, ch] : [-80 - cw, -ch / 2, 80 + cw, ch];
+          const cw = Math.min(426, text.length * 10 + 48) * CARD_SCALE, ch = 60 * CARD_SCALE, shaft = 80 * CARD_SCALE;
+          rel = dir === "right" ? [0, -ch / 2, shaft + cw, ch] : [-shaft - cw, -ch / 2, shaft + cw, ch];
         }
         const o = geoObj(s.name as ObjKind, p, s, start, { ...data, rel });
         o.createSpans.at = [lat.span, lng.span];
@@ -1078,6 +1081,7 @@ export function interpret(src: string, opts: RunOptions = {}): Timeline {
         const w = text.length * 22 + 100, h = 74;
         yearObj = makeObj("year", p, s, start, [32, 32], [32, 32, w, h], { text, highlight: hl });
         yearObj.pos.base = [32, 32];
+        if (curMap) (curMap.data.markers ??= []).push(yearObj);
         return true;
       }
       case "legend": {

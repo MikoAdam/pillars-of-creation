@@ -28,8 +28,9 @@ const CONFIG = {
 
     // Data sources
     data: {
-        countries: './data/countries.geojson',
-        regions: './data/regions.geojson',
+        // the Studio's bundled Natural Earth outlines (public/geo/), so the tool and the video draw the same borders
+        countries: '../geo/countries.json',
+        regions: '../geo/regions.json',
         // Fallback URLs if local files don't exist
         countriesFallback: 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson',
         regionsFallback: 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson'

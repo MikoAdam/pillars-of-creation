@@ -13,7 +13,7 @@ import { drawIcon, drawImage } from "@/render/scenes/stickers";
 import { alpha, bodyFont, fillRound } from "@/render/theme";
 import { wrapText } from "@/render/text";
 import { renderMap, drawAttack, drawRoute, drawPin, drawBubble, drawPlace, drawTag, drawYear, drawLegend, drawEffect } from "@/render/scenes/map";
-import { anchorAt, geoEnds, mapCamAt, alive, cameraAt, EASES, sample, type Fx, type TObj, type Timeline, type Trans } from "@/lang/timeline";
+import { anchorAt, geoEnds, mapCamAt, alive, cameraAt, EASES, sample, worldBox, type Fx, type TObj, type Timeline, type Trans } from "@/lang/timeline";
 
 export interface Override {
   id: string;
@@ -224,11 +224,33 @@ function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets
     case "highlight": drawMarker(ctx, d.a, d.b, p, theme); break;
     case "circle": drawCircle(ctx, o.origin, d.r, p, theme); break;
     case "box": drawBox(ctx, o.origin, d.w, d.h, p, theme); break;
-    case "map": renderMap(ctx, theme, mapCamAt(o, t), d.fills, d.labels, t, d.renames ?? []); break;
+    case "map": renderMap(ctx, theme, mapCamAt(o, t), d.fills, d.labels, t, d.renames ?? [], markerLayout(o, t).boxes); break;
     case "attack": { const e = geoEnds(o, t); drawAttack(ctx, e.a, e.b, d.bend, d.width, d.head, d.color, p); break; }
     case "route": { const e = geoEnds(o, t); drawRoute(ctx, e.a, e.b, d.color, p, d.straight); break; }
     case "pin": ctx.translate(org[0], org[1]); drawPin(ctx, d.symbol, d.color, d.size, local, mapCamAt(o.data.map, t).zoom); break;
-    case "bubble": ctx.translate(org[0], org[1]); drawBubble(ctx, theme, d.text, d.color, local, d.subtitle); break;
+    case "bubble": {
+      ctx.translate(org[0], org[1]);
+      const dy = d.subtitle ? 0 : markerLayout(d.map, t).shift.get(o) ?? 0;
+      if (dy) {
+        // moved out of another bubble's way: a thin leader line back to its place
+        ctx.save();
+        ctx.globalAlpha *= clamp01(local / 0.3) * 0.8;
+        ctx.strokeStyle = d.color;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, dy < 0 ? dy : dy - worldBox(o, t)[3]);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, 5, 0, Math.PI * 2);
+        ctx.fillStyle = d.color;
+        ctx.fill();
+        ctx.restore();
+        ctx.translate(0, dy);
+      }
+      drawBubble(ctx, theme, d.text, d.color, local, d.subtitle);
+      break;
+    }
     case "label": ctx.translate(org[0], org[1]); drawPlace(ctx, theme, d.text, d.size, d.color, local); break;
     case "tag": ctx.translate(org[0], org[1]); drawTag(ctx, theme, d.text, d.dir, d.color, local); break;
     case "year": ctx.translate(o.origin[0], o.origin[1]); drawYear(ctx, theme, d.text, d.highlight, local); break;
@@ -236,6 +258,42 @@ function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets
     case "effect": ctx.translate(org[0], org[1]); drawEffect(ctx, d.symbol, d.color, d.size, local, mapCamAt(o.data.map, t).zoom); break;
   }
   ctx.restore();
+}
+
+type Box = [number, number, number, number];
+const GAP = 14;
+
+/**
+ * Where the markers drawn over a map sit at time t. Callout bubbles that would cover an older
+ * one step up above it (or below, when there is no room above); the older one keeps its place.
+ * Cached for the last (map, t) because every bubble of the map asks during one frame.
+ */
+let layoutKey: { map: TObj; t: number } | null = null;
+let layoutVal: { boxes: Box[]; shift: Map<TObj, number> } = { boxes: [], shift: new Map() };
+function markerLayout(map: TObj, t: number) {
+  if (layoutKey && layoutKey.map === map && layoutKey.t === t) return layoutVal;
+  const boxes: Box[] = [];
+  const shift = new Map<TObj, number>();
+  const placed: Box[] = [];
+  const live = ((map.data.markers as TObj[] | undefined) ?? []).filter((o) => alive(o, t) && t >= o.start);
+  for (const o of live) {
+    const b = worldBox(o, t);
+    if (o.kind !== "bubble" || o.data.subtitle) { boxes.push(b); continue; }
+    let dy = 0;
+    const hits = (y: number) => placed.find((p) => b[0] < p[0] + p[2] + GAP && b[0] + b[2] + GAP > p[0] && b[1] + y < p[1] + p[3] + GAP && b[1] + b[3] + y + GAP > p[1]);
+    for (let i = 0, h = hits(0); h && i < 12; i++, h = hits(dy)) dy = h[1] - GAP - (b[1] + b[3]);
+    if (b[1] + dy < 10) {
+      dy = 0;
+      for (let i = 0, h = hits(0); h && i < 12; i++, h = hits(dy)) dy = h[1] + h[3] + GAP - b[1];
+    }
+    if (dy) shift.set(o, dy);
+    const moved: Box = [b[0], b[1] + dy, b[2], b[3]];
+    placed.push(moved);
+    boxes.push(moved);
+  }
+  layoutKey = { map, t };
+  layoutVal = { boxes, shift };
+  return layoutVal;
 }
 
 function applyFxPre(fx: Fx, raw: number, st: { op: number; s: number; rot: number; dx: number; dy: number; blur: number }) {

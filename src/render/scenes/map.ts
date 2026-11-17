@@ -101,15 +101,19 @@ function darken(hex: string, f: number) {
   return `rgb(${r},${g},${b})`;
 }
 
-/** MapLibre-style text size by zoom: 9/11/13/15 CSS px at zoom 1/4/7/10. */
+/**
+ * Country-label size by zoom, in CSS px of the original ~1440px window (scaled by S for the
+ * 1920 frame). Larger than the map tool's old 9-15px: a video is watched smaller than an editor.
+ * The map tool's label layer uses the same stops.
+ */
+const LABEL_STOPS: [number, number][] = [[1, 14], [3, 16], [5, 19], [7, 22], [10, 26]];
 function nativeLabelSize(zoom: number) {
-  const z = Math.max(1, Math.min(10, zoom));
-  const stops: [number, number][] = [[1, 9], [4, 11], [7, 13], [10, 15]];
-  for (let i = 0; i < stops.length - 1; i++) {
-    const [z0, s0] = stops[i], [z1, s1] = stops[i + 1];
+  const z = Math.max(LABEL_STOPS[0][0], Math.min(LABEL_STOPS[LABEL_STOPS.length - 1][0], zoom));
+  for (let i = 0; i < LABEL_STOPS.length - 1; i++) {
+    const [z0, s0] = LABEL_STOPS[i], [z1, s1] = LABEL_STOPS[i + 1];
     if (z <= z1) return (s0 + ((z - z0) / (z1 - z0)) * (s1 - s0)) * S;
   }
-  return 15 * S;
+  return LABEL_STOPS[LABEL_STOPS.length - 1][1] * S;
 }
 
 type Box4 = [number, number, number, number];
@@ -212,7 +216,8 @@ function paintBase(g: CanvasRenderingContext2D, view: MapView, cam: MapCam) {
   g.globalAlpha /= 0.8;
 }
 
-export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapCam, fills: MapFill[], labels: boolean, t: number, renames: MapRename[] = []) {
+/** `avoid`: frame rectangles [x, y, w, h] of the markers drawn over this map; country names keep clear of them. */
+export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapCam, fills: MapFill[], labels: boolean, t: number, renames: MapRename[] = [], avoid: Box4[] = []) {
   ctx.save();
   if (!geoReady("countries")) {
     ctx.fillStyle = OCEAN;
@@ -310,73 +315,141 @@ export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapC
     ctx.restore();
   }
 
-  if (labels) drawNativeLabels(ctx, theme, cam, pr, cx, countries, boxes, renames, t);
+  if (labels) drawNativeLabels(ctx, theme, cam, pr, countries, boxes, renames, t, avoid);
   ctx.restore();
 }
 
 const T2 = 64; // pattern bleed for occupied fills
 
-/** Native country labels: uppercase, population-priority, collision-approximated. */
+/** Split a name into two lines of about equal width, at a space. */
+function twoLines(ctx: CanvasRenderingContext2D, name: string): string[] {
+  const words = name.split(" ");
+  if (words.length < 2) return [name];
+  let best: string[] = [name], bestW = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const l = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+    const w = Math.max(...l.map((x) => ctx.measureText(x).width));
+    if (w < bestW) { best = l; bestW = w; }
+  }
+  return best;
+}
+
+/**
+ * Width and height (normalised) of a country's largest piece of land. A label is sized and
+ * fitted to this, not to the whole bbox, which for France, the Netherlands or Norway spans
+ * overseas territories far away.
+ */
+const mainCache = new WeakMap<GeoFeature, [number, number]>();
+function mainExtent(f: GeoFeature): [number, number] {
+  let e = mainCache.get(f);
+  if (e) return e;
+  e = [0, 0];
+  let best = -1;
+  for (const r of f.rings) {
+    let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+    for (let i = 0; i < r.length; i += 2) {
+      if (r[i] < x0) x0 = r[i]; if (r[i] > x1) x1 = r[i];
+      if (r[i + 1] < y0) y0 = r[i + 1]; if (r[i + 1] > y1) y1 = r[i + 1];
+    }
+    const area = (x1 - x0) * (y1 - y0);
+    if (area > best) { best = area; e = [x1 - x0, y1 - y0]; }
+  }
+  mainCache.set(f, e);
+  return e;
+}
+
+type Rect = [number, number, number, number]; // x0, y0, x1, y1
+const overlaps = (a: Rect, b: Rect) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+
+/**
+ * Country names: uppercase, most populous first, never overlapping each other, the custom
+ * labels or the markers on the map. A name is shown only where it fits its country; it wraps
+ * onto two lines when that helps, and fades (instead of popping) as the camera brings it in
+ * or out of fit and near the frame edge. Big countries get somewhat bigger names.
+ */
 function drawNativeLabels(
-  ctx: CanvasRenderingContext2D, theme: Theme, cam: MapCam, pr: Projection, cx: number,
-  countries: GeoFeature[], boxes: Map<GeoFeature, [number, number, number, number]>, renames: MapRename[], t: number,
+  ctx: CanvasRenderingContext2D, theme: Theme, cam: MapCam, pr: Projection,
+  countries: GeoFeature[], boxes: Map<GeoFeature, Box4>, renames: MapRename[], t: number, avoid: Box4[],
 ) {
-  const opacity = clamp01((cam.zoom - 1) / 1); // text-opacity: zoom 1 → 0, zoom 2 → 1
-  if (opacity <= 0) return;
-  const size = nativeLabelSize(cam.zoom);
-  const renamed = new Set(renames.filter((r) => t >= r.t0 && t < r.end).map((r) => r.name.toLowerCase()));
-  const eligible = countries.filter((f) => !renamed.has(f.name.toLowerCase()) &&
-    (!f.type || f.type === "Sovereign country" || f.type === "Country" || f.type === "Sovereignty"));
-  eligible.sort((a, b) => (b.pop ?? 0) - (a.pop ?? 0));
-  ctx.font = bodyFont(theme, size, 400);
-  try { (ctx as any).letterSpacing = `${(size * 0.07).toFixed(2)}px`; } catch { /* older canvas */ }
+  const opacity = clamp01((cam.zoom - 1) / 1); // fade in between zoom 1 and 2
+  const base = nativeLabelSize(cam.zoom);
+  const taken: Rect[] = avoid.map(([x, y, w, h]) => [x, y, x + w, y + h]);
+  ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  const taken: [number, number, number, number][] = [];
-  ctx.globalAlpha *= opacity;
-  for (const f of eligible) {
-    const b = boxes.get(f)!;
-    const w = b[2] - b[0], h = b[3] - b[1];
-    if (!visible(b) || w < 34) continue;
-    const [x, y] = pr.point(...f.center);
-    if (x < 20 || x > 1900 || y < 14 || y > 1066) continue;
-    const name = f.name.toUpperCase();
-    const tw = ctx.measureText(name).width;
-    if (tw > w * 0.92) continue;
-    const rect: [number, number, number, number] = [x - tw / 2 - 6, y - size * 0.75, tw + 12, size * 1.5];
-    if (taken.some((r) => rect[0] < r[2] && rect[2] > r[0] && rect[1] < r[3] && rect[3] > r[1])) continue;
-    taken.push(rect);
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = "rgba(240,235,224,0.92)";
-    ctx.lineWidth = 3;
-    ctx.strokeText(name, x, y);
-    ctx.fillStyle = "#2c3e50";
-    ctx.fillText(name, x, y);
-  }
-  try { (ctx as any).letterSpacing = "0px"; } catch { /* ignore */ }
-  ctx.globalAlpha /= opacity;
+  ctx.lineJoin = "round";
 
-  // per-country custom labels replace the native ones
+  // per-country custom labels go first, so the native ones keep clear of them
+  const renamed = new Set<string>();
   for (const r of renames) {
     if (t < r.t0 || t >= r.end) continue;
     const f = countries.find((c) => c.name.toLowerCase() === r.name.toLowerCase());
     if (!f) continue;
+    renamed.add(f.name.toLowerCase());
     const [x, y] = r.at ? pr.point(r.at[0], r.at[1]) : pr.point(...f.center);
-    const a = clamp01((t - r.t0) / 0.3);
-    ctx.save();
-    ctx.globalAlpha *= a;
-    const fs = 14 * S;
+    const fs = Math.max(base * 1.05, 18 * S);
     ctx.font = bodyFont(theme, fs, 700);
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.lineJoin = "round";
+    const tw = ctx.measureText(r.text).width;
+    taken.push([x - tw / 2 - fs * 0.4, y - fs * 0.8, x + tw / 2 + fs * 0.4, y + fs * 0.8]);
+    ctx.save();
+    ctx.globalAlpha *= clamp01((t - r.t0) / 0.3);
     ctx.strokeStyle = "rgba(255,255,255,0.95)";
-    ctx.lineWidth = 4;
+    ctx.lineWidth = Math.max(4, fs * 0.24);
     ctx.strokeText(r.text, x, y);
     ctx.fillStyle = "#334155";
     ctx.fillText(r.text, x, y);
     ctx.restore();
   }
+
+  if (opacity > 0) {
+    const eligible = countries.filter((f) => !renamed.has(f.name.toLowerCase()) &&
+      (!f.type || f.type === "Sovereign country" || f.type === "Country" || f.type === "Sovereignty"));
+    eligible.sort((a, b) => (b.pop ?? 0) - (a.pop ?? 0));
+    for (const f of eligible) {
+      const b = boxes.get(f)!;
+      if (!visible(b)) continue;
+      const [mw, mh] = mainExtent(f);
+      const w = Math.min(mw * pr.size, b[2] - b[0]), h = Math.min(mh * pr.size, b[3] - b[1]);
+      if (w < base * 2.5) continue;
+      const [x, y] = pr.point(...f.center);
+      const edge = clamp01(Math.min(x - 30, 1890 - x, y - 24, 1056 - y) / 50);
+      if (edge <= 0) continue;
+      // big countries: up to 1.35x the base size
+      const size = base * Math.min(1.35, Math.max(1, Math.sqrt(w * h) / (base * 18)));
+      ctx.font = bodyFont(theme, size, 500);
+      try { (ctx as any).letterSpacing = `${(size * 0.08).toFixed(2)}px`; } catch { /* older canvas */ }
+      const name = f.name.toUpperCase();
+      let lines = [name];
+      let tw = ctx.measureText(name).width;
+      if (tw > w * 0.9) {
+        const two = twoLines(ctx, name);
+        const tw2 = Math.max(...two.map((l) => ctx.measureText(l).width));
+        if (two.length === 2 && tw2 < tw && h > size * 2.6) { lines = two; tw = tw2; }
+      }
+      // fade with how well the name fits its country: full above 1.05x, gone below 0.8x
+      const fit = clamp01((w / tw - 0.8) / 0.25);
+      const a = opacity * fit * edge;
+      if (a <= 0.02) continue;
+      const lh = size * 1.15;
+      const bh = lines.length * lh;
+      const rect: Rect = [x - tw / 2 - size * 0.5, y - bh / 2 - size * 0.3, x + tw / 2 + size * 0.5, y + bh / 2 + size * 0.3];
+      if (taken.some((r) => overlaps(rect, r))) continue;
+      taken.push(rect);
+      ctx.save();
+      ctx.globalAlpha *= a;
+      ctx.strokeStyle = "rgba(240,235,224,0.92)";
+      ctx.lineWidth = Math.max(3, size * 0.22);
+      ctx.fillStyle = "#2c3e50";
+      lines.forEach((l, i) => {
+        const ly = y - bh / 2 + lh * (i + 0.5);
+        ctx.strokeText(l, x, ly);
+        ctx.fillText(l, x, ly);
+      });
+      ctx.restore();
+    }
+  }
+  try { (ctx as any).letterSpacing = "0px"; } catch { /* ignore */ }
+  ctx.restore();
 }
 
 /** Points along the attack curve. */
@@ -541,6 +614,12 @@ export function drawEffect(ctx: CanvasRenderingContext2D, sym: string, color: st
 }
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
+/**
+ * Callout cards (bubbles and pointer tags) are drawn this much larger than in the map tool:
+ * the tool's 15px text is fine on an editor screen but too small in a video.
+ */
+export const CARD_SCALE = 1.35;
+
 export function bubbleLayout(ctx: CanvasRenderingContext2D, theme: Theme, text: string, subtitle = false) {
   const font = 20, lh = 32, padX = 2 * 29, padY = 2 * 21;
   ctx.font = bodyFont(theme, font, 500);
@@ -560,6 +639,7 @@ export function drawBubble(ctx: CanvasRenderingContext2D, theme: Theme, text: st
   if (k <= 0) return;
   const { lines, w, h, font, lh, padX, padY } = bubbleLayout(ctx, theme, text, subtitle);
   ctx.save();
+  ctx.scale(CARD_SCALE, CARD_SCALE);
   ctx.globalAlpha *= k;
   if (!subtitle) ctx.scale(popIn(local), popIn(local));
   const x = -w / 2, y = subtitle ? -h : -h - 13;
@@ -581,7 +661,16 @@ export function drawBubble(ctx: CanvasRenderingContext2D, theme: Theme, text: st
   ctx.restore();
 }
 
-/** Plain map label, white with a soft black shadow. */
+/** True for #rgb / #rrggbb colours darker than mid-grey; named colours count as light. */
+function isDark(c: string) {
+  const m = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(c);
+  const hex = m ? m[1] + m[1] + m[2] + m[2] + m[3] + m[3] : /^#([0-9a-f]{6})$/i.exec(c)?.[1];
+  if (!hex) return false;
+  const n = parseInt(hex, 16);
+  return 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255) < 128;
+}
+
+/** Plain map label: light text gets a soft black shadow, dark text a light halo. */
 export function drawPlace(ctx: CanvasRenderingContext2D, theme: Theme, text: string, size: number, color: string, local: number) {
   ctx.save();
   ctx.globalAlpha *= clamp01(local / 0.3);
@@ -590,6 +679,16 @@ export function drawPlace(ctx: CanvasRenderingContext2D, theme: Theme, text: str
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
+  if (isDark(color)) {
+    // dark text: a light halo like the country names (a black glow would turn it into a smudge)
+    ctx.strokeStyle = "rgba(255,255,255,0.92)";
+    ctx.lineWidth = Math.max(4, fs * 0.24);
+    ctx.strokeText(text, 0, 0);
+    ctx.fillStyle = color;
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+    return;
+  }
   ctx.shadowColor = "rgba(0,0,0,0.9)";
   ctx.shadowBlur = 4 * S;
   ctx.shadowOffsetY = 2 * S;
@@ -615,6 +714,7 @@ export function drawTag(ctx: CanvasRenderingContext2D, theme: Theme, text: strin
   const { cw, ch, shaft, head, headH } = tagLayout(ctx, theme, text);
   const s = dir === "right" ? 1 : -1;
   ctx.save();
+  ctx.scale(CARD_SCALE, CARD_SCALE);
   ctx.globalAlpha *= p;
   ctx.translate(s * 30 * (1 - p), 0);
   // shaft

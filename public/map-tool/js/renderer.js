@@ -468,6 +468,17 @@ class MapRenderer {
                     const sov = f.properties.SOVEREIGNT || '';
                     const adm = f.properties.ADMIN || '';
                     if (sov && adm && sov !== adm) return false;
+                    // micro-states (Monaco, San Marino, Liechtenstein, Andorra, Malta...): no name,
+                    // it would only spill over the neighbours, as in the Studio's video renderer
+                    const g = f.geometry;
+                    const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+                    let span = 0;
+                    for (const poly of polys) {
+                        const ring = poly[0] || [];
+                        const xs = ring.map(c => c[0]), ys = ring.map(c => c[1]);
+                        span = Math.max(span, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+                    }
+                    if (span < 0.6) return false;
                     return true;
                 })
                 .map(f => {
@@ -496,8 +507,10 @@ class MapRenderer {
                 layout: {
                     'text-field': ['get', 'NAME'],
                     'text-font': ['Noto Sans Regular'],
+                    // same stops as the Studio's video renderer (LABEL_STOPS in src/render/scenes/map.ts)
                     'text-size': ['interpolate', ['linear'], ['zoom'],
-                        1, 9, 4, 11, 7, 13, 10, 15],
+                        1, 14, 3, 16, 5, 19, 7, 22, 10, 26],
+                    'text-padding': 6,
                     'text-transform': 'uppercase',
                     'text-letter-spacing': 0.07,
                     'text-max-width': 5,
