@@ -63,7 +63,7 @@ export function uniqueName(base: string, taken: string[]) {
   return name;
 }
 
-/** Downscale an image file to max 1920px wide JPEG data URL. */
+/** Downscale an image file to at most 1920px wide, as a data URL (PNG when it may be transparent). */
 export function fileToDataUrl(file: File): Promise<string> {
   return new Promise((res, rej) => {
     const url = URL.createObjectURL(file);
@@ -75,7 +75,8 @@ export function fileToDataUrl(file: File): Promise<string> {
       c.height = Math.round(img.height * k);
       c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
       URL.revokeObjectURL(url);
-      res(c.toDataURL("image/jpeg", 0.82));
+      // logos and cut-outs keep their transparency; photos become compact JPEGs
+      res(/png|webp|gif|svg/.test(file.type) ? c.toDataURL("image/png") : c.toDataURL("image/jpeg", 0.82));
     };
     img.onerror = () => rej(new Error("Could not read image"));
     img.src = url;

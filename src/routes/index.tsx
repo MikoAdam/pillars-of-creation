@@ -1,6 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video, RotateCcw, Film, Moon, Sun } from "lucide-react";
+import { MousePointer2, Type, MoveUpRight, Circle, Square, Highlighter, Play, Pause, Undo2, Redo2, Video, RotateCcw, Film, Moon, Sun, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { geoReady, loadGeo } from "@/render/geo";
 import { MapInspector } from "@/editor/MapPanel";
 import { ExportDialog } from "@/editor/ExportDialog";
@@ -11,7 +11,8 @@ import { cuesToCode, transcribe } from "@/editor/transcribe";
 import { run } from "@/lang/interpreter";
 import { activeLinesAt, mapCamAt, styleValues, type Timeline, type TObj } from "@/lang/timeline";
 import { insertAtTime, removeFx, resetStyle, setStyle, writeFx, writeMove, writeOver, writeProp, writeScale, writeStart, writeGeoMove, writeGeoEnd, writeBend, writeMapCam, writeDelete, writeReverse, writeColor } from "@/lang/writeback";
-import { Library, Inspector, MapLocked } from "@/editor/Library";
+import { Inspector, MapLocked } from "@/editor/Library";
+import { SidePanel, type PanelId } from "@/editor/SidePanel";
 import { getMapCode, listMaps, saveMap, uniqueMapName } from "@/editor/mapStore";
 import { PasteScript } from "@/editor/PasteScript";
 import { applyStyle, getTheme, THEMES } from "@/render/theme";
@@ -21,7 +22,6 @@ import type { Assets } from "@/render/types";
 import { CodeEditor } from "@/editor/CodeEditor";
 import { Stage, type FxDrop, type Tool } from "@/editor/Stage";
 import { TimelinePanel } from "@/editor/TimelinePanel";
-import { MediaBin } from "@/editor/MediaBin";
 import { AI_PROMPT } from "@/editor/aiPrompt";
 import { Button } from "@/components/ui/button";
 import { DEMOS, type Demo } from "@/editor/demos";
@@ -73,6 +73,8 @@ function Studio() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [media, setMedia] = useState<MediaItem[]>(BUILTIN_MEDIA);
   const [assets, setAssets] = useState<Assets>(new Map());
+  const assetsRef = useRef(assets);
+  assetsRef.current = assets;
   const [notice, setNotice] = useState<string | null>(null);
   const loaded = useRef(false);
   /** set right before a hand-driven code change, so the next run() happens on the next tick
@@ -123,7 +125,7 @@ function Studio() {
     const delay = runImmediate.current ? 0 : 300;
     const id = setTimeout(() => {
       runImmediate.current = false;
-      const r = run(code, { resolveMap: getMapCode });
+      const r = run(code, { resolveMap: getMapCode, assetSize: (n) => { const img = assetsRef.current.get("@" + n); return img?.naturalWidth ? [img.naturalWidth, img.naturalHeight] : undefined; } });
       if (r.ok) {
         setTimeline(r.timeline); setError(null);
         // map outlines load once in the background, then the script runs again
@@ -145,7 +147,7 @@ function Studio() {
       }
     }, 300);
     return () => clearTimeout(id);
-  }, [code, geoVersion, mapsVersion]);
+  }, [code, geoVersion, mapsVersion, assets.size]);
   const [promptCopied, setPromptCopied] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const projectInput = useRef<HTMLInputElement>(null);
@@ -354,6 +356,18 @@ function Studio() {
     return false;
   };
   const [mapEdit, setMapEdit] = useState<{ name: string; isNew: boolean } | null>(null);
+  const [panel, setPanel] = useState<PanelId | null>("add");
+  const [scriptOpen, setScriptOpen] = useState(true);
+  const maps = useMemo(() => listMaps(), [mapsVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+  const mapsInVideo = useMemo(() => new Set([...code.matchAll(/^\s*include\s+map\s+"([^"]+)"/gm)].map((m) => m[1]!)), [code]);
+  const addMapToVideo = (name: string) => {
+    const line = `include map "${name}"`;
+    if (hist.codeRef.current.includes(line)) return;
+    setPlaying(false);
+    seek(0);
+    hand(`${hist.codeRef.current.trimEnd()}\n\n${line}\n`);
+    setNotice(`"${name}" is in the video. Press Play to see it.`);
+  };
   const mapFrame = useRef<HTMLIFrameElement>(null);
   const pendingMapCode = useRef<((code: string) => void) | null>(null);
   const openMap = (name?: string) => {
@@ -521,16 +535,16 @@ function Studio() {
           />
         </div>
       )}
-      <header className="flex h-11 shrink-0 items-center justify-between gap-4 border-b border-border px-4">
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-3">
         <div className="flex min-w-0 shrink items-baseline gap-3">
-          <h1 className="shrink-0 whitespace-nowrap font-display text-lg font-semibold tracking-tight">Pillars of Creation Studio</h1>
-          <span className="truncate text-xs text-muted-foreground">{timeline.title}</span>
+          <h1 className="shrink-0 whitespace-nowrap font-display text-base font-semibold tracking-tight">Pillars of Creation Studio</h1>
+          <span className="hidden truncate text-xs text-muted-foreground lg:inline">{timeline.title}</span>
         </div>
-        <div className="flex min-w-0 items-center gap-2 overflow-x-auto whitespace-nowrap text-xs">
-          {notice && <button onClick={() => setNotice(null)} className="max-w-[46ch] truncate text-primary">{notice} ✕</button>}
+        <div className="flex items-center">
           <button onClick={hist.undo} title="Undo (Ctrl+Z)" className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"><Undo2 className="h-4 w-4" /></button>
           <button onClick={hist.redo} title="Redo (Ctrl+Shift+Z)" className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"><Redo2 className="h-4 w-4" /></button>
-          <ThemeToggle />
+        </div>
+        <div className="ml-auto flex min-w-0 items-center gap-1.5 overflow-x-auto whitespace-nowrap text-xs">
           <select
             value=""
             onChange={(e) => { const d = DEMOS.find((x) => x.id === e.target.value); if (d) loadDemo(d); }}
@@ -540,9 +554,10 @@ function Studio() {
             <option value="" disabled>Examples…</option>
             {DEMOS.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
-          <button onClick={() => projectInput.current?.click()} title="Open a saved project file (.pillars.json)" className="rounded-md border border-border bg-secondary px-2.5 py-1 text-foreground hover:bg-accent">Open</button>
+          <button onClick={() => projectInput.current?.click()} title="Open a saved project file (.pillars.json)" className="rounded-md px-2 py-1 text-muted-foreground hover:bg-secondary hover:text-foreground">Open</button>
           <input ref={projectInput} type="file" accept=".json,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void openProject(f); e.target.value = ""; }} />
-          <button onClick={saveProject} title="Save the script, its maps and your photos as one project file" className="rounded-md border border-border bg-secondary px-2.5 py-1 text-foreground hover:bg-accent">Save</button>
+          <button onClick={saveProject} title="Save the script, its maps and your photos as one project file (Ctrl+S)" className="rounded-md px-2 py-1 text-muted-foreground hover:bg-secondary hover:text-foreground">Save</button>
+          <span className="mx-1 h-5 w-px bg-border" />
           <Button
             variant="secondary"
             size="sm"
@@ -553,6 +568,7 @@ function Studio() {
             {promptCopied ? "Copied" : "Copy explanation for LLMs"}
           </Button>
           <button onClick={() => setPasteOpen(true)} title="Paste a script an AI wrote, check it, and load it" className="rounded-md border border-border bg-secondary px-2.5 py-1 text-foreground hover:bg-accent">Paste from AI</button>
+          <span className="mx-1 h-5 w-px bg-border" />
           <StylePanel
             base={baseTheme}
             theme={theme}
@@ -560,144 +576,168 @@ function Studio() {
             onSet={(k, v) => { const next = setStyle(hist.codeRef.current, timeline, k, v); if (next !== hist.codeRef.current) hist.setTyped(next); }}
             onReset={(k) => hand(resetStyle(hist.codeRef.current, timeline, k))}
           />
-          <button onClick={() => { setPlaying(false); setExporting(true); }} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 font-semibold text-primary-foreground"><Film className="h-3.5 w-3.5" /> Export</button>
-          <Link to="/preview" className="text-muted-foreground hover:text-foreground">Scene preview</Link>
-          <button onClick={() => { setPlaying(false); setMapEdit({ name: uniqueMapName("New map"), isNew: true }); }} title="Build a map in the map tool. The video plays it from its script." className="rounded-md border border-border bg-secondary px-2.5 py-1 text-foreground hover:bg-accent">+ Map</button>
+          <ThemeToggle />
+          <button onClick={() => { setPlaying(false); setExporting(true); }} className="ml-1 flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 font-semibold text-primary-foreground"><Film className="h-3.5 w-3.5" /> Export</button>
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[420px] shrink-0 flex-col border-r border-border">
-          <MediaBin
-            media={media}
-            onUpload={(f) => void addFiles(f)}
-            onInsert={insertPhoto}
-            onRemove={(n) => { const next = media.filter((m) => m.name !== n); setMedia(next); saveMedia(next); }}
-          />
-          <VoicePanel
-            voices={voices}
-            active={timeline.voice}
-            activeMusic={timeline.music?.name}
-            status={voiceStatus}
-            progress={voiceProgress}
-            onUpload={(f) => void uploadVoice(f)}
-            onUploadMusic={(f) => void uploadMusic(f)}
-            onMusic={(n) => hand(useMusic(n))}
-            onUse={(n) => hand(useVoice(n))}
-            onSubtitles={makeSubtitles}
-            onRemove={(n) => { setVoices((v) => v.filter((x) => x.name !== n)); void deleteAudio(n); }}
-          />
-          <div className="flex items-baseline justify-between gap-2 border-b border-border px-3 py-1.5">
-            <span className="text-xs font-semibold text-foreground">Script</span>
-            <span className="truncate text-[11px] text-muted-foreground">The source of truth: every change on the video rewrites this</span>
-          </div>
-          <div className="min-h-0 flex-1">
-            <CodeEditor
-              value={code}
-              onChange={hist.setTyped}
-              onUndo={hist.undo}
-              onRedo={hist.redo}
-              error={error}
-              selectedLines={selectedLines}
-              activeLines={activeLines}
-              onCaretLine={onCaretLine}
-              assetNames={media.map((m) => m.name)}
-              objectIds={timeline.objects.map((o) => o.id)}
+        <SidePanel
+          panel={panel}
+          onPanel={setPanel}
+          selected={selectedObj}
+          onInsert={onInsert}
+          onInsertCenter={onInsertCenter}
+          onFx={onFx}
+          onNotice={setNotice}
+          media={media}
+          onUpload={(f) => void addFiles(f)}
+          onPhoto={insertPhoto}
+          onRemoveMedia={(n) => { const next = media.filter((m) => m.name !== n); setMedia(next); saveMedia(next); }}
+          maps={maps}
+          mapsInVideo={mapsInVideo}
+          onNewMap={() => { setPlaying(false); setMapEdit({ name: uniqueMapName("New map"), isNew: true }); }}
+          onEditMap={openMap}
+          onAddMap={addMapToVideo}
+          audio={
+            <VoicePanel
+              voices={voices}
+              active={timeline.voice}
+              activeMusic={timeline.music?.name}
+              status={voiceStatus}
+              progress={voiceProgress}
+              onUpload={(f) => void uploadVoice(f)}
+              onUploadMusic={(f) => void uploadMusic(f)}
+              onMusic={(n) => hand(useMusic(n))}
+              onUse={(n) => hand(useVoice(n))}
+              onSubtitles={makeSubtitles}
+              onRemove={(n) => { setVoices((v) => v.filter((x) => x.name !== n)); void deleteAudio(n); }}
             />
-          </div>
-        </aside>
+          }
+        />
 
         <section className="flex min-w-0 flex-1 flex-col">
-          <div className="px-4 pt-3">
-            <p className="mb-1.5 text-xs text-muted-foreground"><span className="font-semibold text-foreground">Add to the video</span> at the playhead: click a chip, or drag it onto the preview</p>
-            <Library selected={selectedObj} onInsert={onInsert} onInsertCenter={onInsertCenter} onFx={onFx} onNotice={setNotice} />
-          </div>
-          <div className="flex min-h-0 flex-1 gap-3 px-4 pb-3 pt-3">
-            <div className="flex shrink-0 flex-col gap-1 self-start rounded-md border border-border bg-card p-1">
+          <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+            <div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-secondary p-0.5">
               {TOOLS.map((tl) => (
                 <button
                   key={tl.id}
                   onClick={() => setTool(tl.id)}
                   title={`${tl.label} (${tl.key.toUpperCase()})`}
-                  className={`rounded p-2 ${tool === tl.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
+                  className={`rounded-md p-1.5 ${tool === tl.id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
                 >
                   <tl.icon className="h-4 w-4" />
                 </button>
               ))}
             </div>
-            <div className="flex min-w-0 flex-1 flex-col items-center justify-center">
-              <div className="w-full max-w-[min(100%,calc((100vh-440px)*16/9))]">
-                <p className="mb-1.5 truncate text-xs text-muted-foreground" title={TOOLS.find((x) => x.id === tool)?.label}>
-                  {TOOLS.find((x) => x.id === tool)?.label}
-                </p>
-                <Stage
-                  timeline={timeline}
-                  theme={theme}
-                  assets={assets}
-                  t={t}
-                  tool={tool}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                  onMove={onMove}
-                  onScale={onScale}
-                  onRotate={onRotate}
-                  onFx={onFx}
-                  onNotice={setNotice}
-                  previewOpacity={previewOpacity}
-                  onInsert={onInsert}
-                  onDropFiles={(f) => void onDropFiles(f)}
-                  onDropAsset={insertPhoto}
-                  onGeoHandle={onGeoHandle}
-                />
-                <div className="mt-3 flex items-center gap-3">
-                  <button onClick={() => { seek(0); setPlaying(true); }} title="Restart from the beginning (R)" className="flex items-center gap-1.5 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-accent">
-                    <RotateCcw className="h-4 w-4" /> Restart
-                  </button>
-                  <button onClick={toggle} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
-                    {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                    {playing ? "Pause" : "Play"}
-                  </button>
-                  <input type="range" min={0} max={total} step={1 / 30} value={Math.min(t, total)} onChange={(e) => scrub(Number(e.target.value))} className="flex-1 accent-primary" />
-                  <span className="w-28 text-right font-mono text-xs tabular-nums text-muted-foreground">{fmt(t)} / {fmt(total)}</span>
-                </div>
-                {selectedObj?.locked && (
-                  <div className="mt-2">
-                    <MapLocked name={selectedObj.from ?? ""} onEdit={() => openMap(selectedObj.from)} />
-                  </div>
-                )}
-                {selectedObj?.kind === "map" && !selectedObj.locked && (
-                  <div className="mt-2">
-                    <MapInspector o={selectedObj} t={t} onSet={(k, v) => hand(writeMapCam(hist.codeRef.current, timeline, selectedObj, t, k, [v]))} />
-                  </div>
-                )}
-                {selectedObj && !selectedObj.locked && selectedObj.kind !== "map" && (
-                  <div className="mt-2">
-                    <Inspector
-                      o={selectedObj}
-                      t={t}
-                      onFx={(w, st) => hand(st ? writeFx(hist.codeRef.current, selectedObj, w, st) : removeFx(hist.codeRef.current, selectedObj, w))}
-                      onRotate={(d) => onRotate(selectedObj, d)}
-                      onOpacity={(v) => onOpacity(selectedObj, v)}
-                      onPreviewOpacity={setPreviewOpacity}
-                      onColor={selectedObj.data?.geo ? (c) => onColor(selectedObj, c) : undefined}
-                    />
-                  </div>
-                )}
+            <p className="min-w-0 truncate text-xs text-muted-foreground" title={TOOLS.find((x) => x.id === tool)?.label}>
+              {TOOLS.find((x) => x.id === tool)?.label}
+            </p>
+          </div>
+          <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-3">
+            {notice && (
+              <button onClick={() => setNotice(null)} className="absolute left-1/2 top-2 z-10 max-w-[80%] -translate-x-1/2 truncate rounded-full border border-primary/40 bg-popover px-3 py-1 text-xs text-foreground shadow-lg">
+                {notice} <span className="text-muted-foreground">✕</span>
+              </button>
+            )}
+            <div className="w-full max-w-[min(100%,calc((100vh-420px)*16/9))]">
+              <Stage
+                timeline={timeline}
+                theme={theme}
+                assets={assets}
+                t={t}
+                tool={tool}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                onMove={onMove}
+                onScale={onScale}
+                onRotate={onRotate}
+                onFx={onFx}
+                onNotice={setNotice}
+                previewOpacity={previewOpacity}
+                onInsert={onInsert}
+                onDropFiles={(f) => void onDropFiles(f)}
+                onDropAsset={insertPhoto}
+                onGeoHandle={onGeoHandle}
+              />
+              <div className="mt-3 flex items-center gap-2">
+                <button onClick={() => { seek(0); setPlaying(true); }} title="Restart from the beginning (R)" className="rounded-md border border-border bg-secondary p-1.5 text-foreground hover:bg-accent">
+                  <RotateCcw className="h-4 w-4" />
+                </button>
+                <button onClick={toggle} title="Play / pause (Space)" className="flex w-24 items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
+                  {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                  {playing ? "Pause" : "Play"}
+                </button>
+                <input type="range" min={0} max={total} step={1 / 30} value={Math.min(t, total)} onChange={(e) => scrub(Number(e.target.value))} className="flex-1 accent-primary" />
+                <span className="w-28 text-right font-mono text-xs tabular-nums text-muted-foreground">{fmt(t)} / {fmt(total)}</span>
               </div>
+              {selectedObj?.locked && (
+                <div className="mt-2">
+                  <MapLocked name={selectedObj.from ?? ""} onEdit={() => openMap(selectedObj.from)} />
+                </div>
+              )}
+              {selectedObj?.kind === "map" && !selectedObj.locked && (
+                <div className="mt-2">
+                  <MapInspector o={selectedObj} t={t} onSet={(k, v) => hand(writeMapCam(hist.codeRef.current, timeline, selectedObj, t, k, [v]))} />
+                </div>
+              )}
+              {selectedObj && !selectedObj.locked && selectedObj.kind !== "map" && (
+                <div className="mt-2">
+                  <Inspector
+                    o={selectedObj}
+                    t={t}
+                    onFx={(w, st) => hand(st ? writeFx(hist.codeRef.current, selectedObj, w, st) : removeFx(hist.codeRef.current, selectedObj, w))}
+                    onRotate={(d) => onRotate(selectedObj, d)}
+                    onOpacity={(v) => onOpacity(selectedObj, v)}
+                    onPreviewOpacity={setPreviewOpacity}
+                    onColor={selectedObj.data?.geo || selectedObj.kind === "icon" ? (c) => onColor(selectedObj, c) : undefined}
+                  />
+                </div>
+              )}
             </div>
           </div>
-          <div className="h-48 shrink-0 border-t border-border">
-            <TimelinePanel
-              timeline={timeline}
-              t={t}
-              selectedId={selectedId}
-              onSeek={scrub}
-              onSelect={setSelectedId}
-              onOver={(span, d) => hand(writeOver(hist.codeRef.current, span, d))}
-              onStart={(info, s0) => hand(writeStart(hist.codeRef.current, info, s0))}
-            />
-          </div>
         </section>
+
+        {scriptOpen ? (
+          <aside className="flex w-[340px] shrink-0 flex-col border-l border-border xl:w-[400px] 2xl:w-[460px]">
+            <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+              <span className="text-xs font-semibold text-foreground">Script</span>
+              <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">The source of truth: every change on the video rewrites it</span>
+              <button onClick={() => setScriptOpen(false)} title="Hide the script" className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"><PanelRightClose className="h-4 w-4" /></button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <CodeEditor
+                value={code}
+                onChange={hist.setTyped}
+                onUndo={hist.undo}
+                onRedo={hist.redo}
+                error={error}
+                selectedLines={selectedLines}
+                activeLines={activeLines}
+                onCaretLine={onCaretLine}
+                assetNames={media.map((m) => m.name)}
+                objectIds={timeline.objects.map((o) => o.id)}
+              />
+            </div>
+          </aside>
+        ) : (
+          <button onClick={() => setScriptOpen(true)} title="Show the script" className="flex w-9 shrink-0 flex-col items-center gap-2 border-l border-border py-3 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground">
+            <PanelRightOpen className="h-4 w-4" />
+            <span className="[writing-mode:vertical-rl]">Script{error ? " · error" : ""}</span>
+          </button>
+        )}
+      </div>
+
+      <div className="h-48 shrink-0 border-t border-border">
+        <TimelinePanel
+          timeline={timeline}
+          t={t}
+          selectedId={selectedId}
+          onSeek={scrub}
+          onSelect={setSelectedId}
+          onOver={(span, d) => hand(writeOver(hist.codeRef.current, span, d))}
+          onStart={(info, s0) => hand(writeStart(hist.codeRef.current, info, s0))}
+        />
       </div>
     </main>
   );
