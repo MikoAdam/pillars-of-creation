@@ -1,7 +1,7 @@
 import type { Theme } from "../types";
 import { bodyFont, fillRound } from "../theme";
 import { wrapText } from "../text";
-import { geoFeatures, geoReady, makeProjection, type GeoFeature, type MapCam, type Projection } from "../geo";
+import { geoFeatures, geoReady, makeProjection, toNorm, type GeoFeature, type MapCam, type Projection } from "../geo";
 import { drawSymbol, type SymbolName } from "../symbols";
 import { EFFECTS } from "../effectsSymbols";
 
@@ -123,13 +123,16 @@ interface MapView {
   cx: number;
   lod: number;
   boxes: Map<GeoFeature, Box4>;
-  land: Path2D;
+  /** flat (untilted) cameras: world → frame as an affine matrix, and the visible world rectangle */
+  flat: { m: [number, number, number, number, number, number]; vx0: number; vx1: number; vy0: number; vy1: number } | null;
+  land?: Path2D;
   paths: Map<GeoFeature, Path2D>;
   base?: HTMLCanvasElement;
   uses: number;
 }
 
 const PREVIEW_W = 1920;
+let scratch: HTMLCanvasElement | undefined;
 
 const views = new Map<string, MapView>();
 const VIEW_LIMIT = 6;
@@ -171,6 +174,47 @@ function addRings(p: Path2D, f: GeoFeature, pr: Projection, cx: number, lod: num
   }
 }
 
+/**
+ * A country's outline in world units (normalised Mercator, relative to its bbox corner for
+ * float precision), built once per detail level. A flat camera is an affine map of these, so
+ * each frame the browser transforms the path natively (addPath with a matrix) instead of
+ * projecting every point in JavaScript: that is what keeps camera flights smooth.
+ */
+interface WorldPath { p: Path2D; ox: number; oy: number; x0: number; x1: number; y0: number; y1: number }
+const worldCache = [0, 1, 2, 3].map(() => new WeakMap<GeoFeature, WorldPath>());
+function worldPath(f: GeoFeature, lod: number): WorldPath {
+  let w = worldCache[lod].get(f);
+  if (w) return w;
+  const ox = f.bbox[0], oy = f.bbox[1];
+  const p = new Path2D();
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const r of ringsAt(f, lod)) {
+    const u = unwrapRing(r, r[0]); // continuous across the antimeridian, starting where the ring starts
+    for (let i = 0; i < u.length; i += 2) {
+      const x = u[i], y = u[i + 1];
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      if (i === 0) p.moveTo(x - ox, y - oy); else p.lineTo(x - ox, y - oy);
+    }
+    p.closePath();
+  }
+  w = { p, ox, oy, x0, x1, y0, y1 };
+  worldCache[lod].set(f, w);
+  return w;
+}
+
+/** Add f to target as seen by a flat camera: every copy of the world (-1, 0, +1) that is on screen. */
+function addFlat(target: Path2D, view: MapView, f: GeoFeature) {
+  const fl = view.flat!;
+  const w = worldPath(f, view.lod);
+  if (w.y1 < fl.vy0 || w.y0 > fl.vy1) return;
+  const [a, b, c, d, e, g] = fl.m;
+  for (let k = -1; k <= 1; k++) {
+    if (w.x1 + k < fl.vx0 || w.x0 + k > fl.vx1) continue;
+    const ox = w.ox + k;
+    target.addPath(w.p, new DOMMatrix([a, b, c, d, e + a * ox + c * w.oy, g + b * ox + d * w.oy]));
+  }
+}
+
 /** Projected outlines for one camera, built once and reused while the camera holds still. */
 function viewFor(cam: MapCam, countries: GeoFeature[]): MapView {
   const key = [cam.lat, cam.lng, cam.zoom, cam.tilt, cam.turn].join("|");
@@ -180,39 +224,58 @@ function viewFor(cam: MapCam, countries: GeoFeature[]): MapView {
   const cx = pr.invertNorm(960, 540)[0];
   const lod = lodFor(cam.zoom);
   const boxes = new Map<GeoFeature, Box4>();
-  const land = new Path2D();
-  for (const f of countries) {
-    const b = screenBox(f, pr, cx);
-    boxes.set(f, b);
-    if (visible(b)) addRings(land, f, pr, cx, lod);
+  for (const f of countries) boxes.set(f, screenBox(f, pr, cx));
+  let flat: MapView["flat"] = null;
+  if (!(cam.tilt > 0)) {
+    const [ccx, ccy] = toNorm(cam.lng, cam.lat);
+    const br = (-cam.turn * Math.PI) / 180, cb = Math.cos(br), sb = Math.sin(br), s = pr.size;
+    const corners = [[-220, -220], [2140, -220], [-220, 1300], [2140, 1300]].map(([x, y]) => pr.invertNorm(x, y));
+    flat = {
+      m: [s * cb, s * sb, -s * sb, s * cb, 960 - s * (cb * ccx - sb * ccy), 540 - s * (sb * ccx + cb * ccy)],
+      vx0: Math.min(...corners.map((q) => q[0])), vx1: Math.max(...corners.map((q) => q[0])),
+      vy0: Math.min(...corners.map((q) => q[1])), vy1: Math.max(...corners.map((q) => q[1])),
+    };
   }
-  const view: MapView = { pr, cx, lod, boxes, land, paths: new Map(), uses: 0 };
+  const view: MapView = { pr, cx, lod, boxes, flat, paths: new Map(), uses: 0 };
   if (views.size >= VIEW_LIMIT) views.delete(views.keys().next().value as string);
   views.set(key, view);
   return view;
+}
+
+/** All visible land as one path, built on first use. */
+function landPath(view: MapView, countries: GeoFeature[]): Path2D {
+  if (view.land) return view.land;
+  const land = new Path2D();
+  for (const f of countries) {
+    if (!visible(view.boxes.get(f)!)) continue;
+    if (view.flat) addFlat(land, view, f); else addRings(land, f, view.pr, view.cx, view.lod);
+  }
+  view.land = land;
+  return land;
 }
 
 function featurePath(view: MapView, f: GeoFeature): Path2D {
   let p = view.paths.get(f);
   if (!p) {
     p = new Path2D();
-    addRings(p, f, view.pr, view.cx, view.lod);
+    if (view.flat) addFlat(p, view, f); else addRings(p, f, view.pr, view.cx, view.lod);
     view.paths.set(f, p);
   }
   return p;
 }
 
 /** Ocean, land and borders for one camera. Painted once per camera and drawn as a bitmap on preview frames. */
-function paintBase(g: CanvasRenderingContext2D, view: MapView, cam: MapCam) {
+function paintBase(g: CanvasRenderingContext2D, view: MapView, cam: MapCam, countries: GeoFeature[]) {
+  const land = landPath(view, countries);
   g.fillStyle = OCEAN;
   g.fillRect(-200, -200, 2320, 1480);
   g.fillStyle = LAND;
-  g.fill(view.land, "evenodd");
+  g.fill(land, "evenodd");
   g.lineJoin = "round";
   g.strokeStyle = BORDER;
   g.lineWidth = Math.min(2.2, 1.1 + cam.zoom * 0.12);
   g.globalAlpha *= 0.8;
-  g.stroke(view.land);
+  g.stroke(land);
   g.globalAlpha /= 0.8;
 }
 
@@ -240,22 +303,24 @@ export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapC
       c.height = 1480;
       const g = c.getContext("2d")!;
       g.translate(200, 200);
-      paintBase(g, view, cam);
+      paintBase(g, view, cam, countries);
       view.base = c;
     }
     ctx.drawImage(view.base, -200, -200);
   } else if (ctx.canvas.width === PREVIEW_W) {
-    const c = document.createElement("canvas");
+    // a camera seen once (a frame of a flight): paint at half size into one reused canvas
+    scratch ??= document.createElement("canvas");
+    const c = scratch;
     c.width = 1160;
     c.height = 740;
     const g = c.getContext("2d")!;
     g.scale(0.5, 0.5);
     g.translate(200, 200);
-    paintBase(g, view, cam);
+    paintBase(g, view, cam, countries);
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(c, -200, -200, 2320, 1480);
   } else {
-    paintBase(ctx, view, cam);
+    paintBase(ctx, view, cam, countries);
   }
 
   // colourings — original fill animations (renderer.js drawFeature)
