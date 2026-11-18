@@ -7,6 +7,7 @@ const NOUN: Partial<Record<ObjKind, string>> = {
   arrow: "Arrow", circle: "Circle", box: "Box", highlight: "Highlight", map: "Map", pin: "Symbol", effect: "Symbol",
   bubble: "Bubble", label: "Label", tag: "Tag", attack: "Attack", route: "Line", year: "Year", legend: "Legend",
   title: "Title", lower: "Lower third", quote: "Quote", credits: "Credits", icon: "Icon", image: "Picture",
+  narration: "Voice", cite: "Quote", sources: "Sources",
 };
 
 function labelOf(o: TObj) {

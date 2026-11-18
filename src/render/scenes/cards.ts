@@ -203,3 +203,161 @@ export function drawCredits(rc: RenderCtx, d: { heading: string; rows: { role: s
   });
   ctx.restore();
 }
+
+/** A link as it is shown on screen: no scheme, no trailing slash, shortened in the middle. */
+export function shortUrl(url: string, max = 64) {
+  const u = url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
+  return u.length > max ? `${u.slice(0, max - 20)}…${u.slice(-19)}` : u;
+}
+
+interface CiteData { text: string; title: string; by: string; date: string; url: string; license: string }
+
+/**
+ * A quoted passage from a written source, as a clipping: who published it and when, its title,
+ * the words themselves (*marked* words in the accent colour), and where to find it, with its
+ * licence. The words are quoted exactly; attribution is always on screen with them.
+ */
+export function drawCite(rc: RenderCtx, d: CiteData, local: number) {
+  const { ctx, theme, width: W, height: H } = rc;
+  const cardW = 1320, pad = 72, inner = cardW - pad * 2;
+  ctx.save();
+  // measure
+  ctx.font = displayFont(theme, 46);
+  const titleLines = d.title ? wrapWords(ctx, displayText(theme, d.title).split(/\s+/), inner).slice(0, 2) : [];
+  const words = parseWords(d.text);
+  let size = 44;
+  ctx.font = bodyFont(theme, size, 500);
+  let lines = wrapWords(ctx, words.map((w) => w.w), inner - 40, size * 0.28);
+  while (lines.length * size * 1.45 > 420 && size > 28) {
+    size -= 2;
+    ctx.font = bodyFont(theme, size, 500);
+    lines = wrapWords(ctx, words.map((w) => w.w), inner - 40, size * 0.28);
+  }
+  const lh = size * 1.45;
+  const headH = 40, titleH = titleLines.length * 56, quoteH = lines.length * lh, footH = 40;
+  const cardH = pad + headH + (titleH ? titleH + 20 : 0) + 28 + quoteH + 36 + footH + pad * 0.8;
+  const x = W / 2 - cardW / 2, top = H / 2 - cardH / 2;
+
+  const p = theme.easing.enter(prog(local, 0, 0.6));
+  ctx.globalAlpha *= p;
+  ctx.translate(0, (1 - p) * 40);
+  ctx.fillStyle = alpha(theme.colors.text, 0.07);
+  fillRound(ctx, x, top, cardW, cardH, Math.min(theme.radius ?? 0, 20));
+  ctx.strokeStyle = alpha(theme.colors.text, 0.14);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = theme.colors.accent;
+  fillRound(ctx, x, top, 10, cardH, Math.min(theme.radius ?? 0, 20) ? 5 : 0);
+
+  let y = top + pad;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  // publisher · date
+  ctx.font = bodyFont(theme, 28, 700);
+  try { (ctx as any).letterSpacing = "2px"; } catch { /* older canvas */ }
+  ctx.fillStyle = theme.colors.accent;
+  const by = d.by.toUpperCase();
+  ctx.fillText(by, x + pad, y + headH / 2);
+  const byW = by ? ctx.measureText(by).width : 0;
+  try { (ctx as any).letterSpacing = "0px"; } catch { /* ignore */ }
+  if (d.date) {
+    ctx.font = bodyFont(theme, 28, 500);
+    ctx.fillStyle = alpha(theme.colors.text, 0.6);
+    ctx.fillText(`${by ? "  ·  " : ""}${d.date}`, x + pad + byW, y + headH / 2);
+  }
+  y += headH;
+  if (titleH) {
+    y += 20;
+    ctx.font = displayFont(theme, 46);
+    ctx.fillStyle = theme.colors.text;
+    titleLines.forEach((l, i) => ctx.fillText(l.words.join(" "), x + pad, y + 28 + i * 56));
+    y += titleH;
+  }
+  y += 28;
+  // the quoted words, line by line
+  ctx.font = `700 ${Math.round(size * 2.2)}px "Playfair Display", serif`;
+  ctx.fillStyle = alpha(theme.colors.accent, 0.5);
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText("“", x + pad - 6, y + size * 1.3);
+  ctx.textBaseline = "middle";
+  let idx = 0;
+  lines.forEach((l, li) => {
+    const q = theme.easing.enter(prog(local, 0.35 + li * 0.18, 0.5));
+    let wx = x + pad + 40;
+    const ly = y + li * lh + lh / 2;
+    ctx.save();
+    ctx.globalAlpha *= q;
+    ctx.font = bodyFont(theme, size, 500);
+    l.words.forEach((w, wi) => {
+      const e = words[idx]?.e;
+      if (e) {
+        ctx.fillStyle = alpha(theme.colors.accent, 0.22);
+        ctx.fillRect(wx - 4, ly - size * 0.62, l.widths[wi] + 8, size * 1.24);
+      }
+      ctx.fillStyle = e ? theme.colors.accent : theme.colors.text;
+      ctx.fillText(w, wx, ly);
+      wx += l.widths[wi] + size * 0.28;
+      idx++;
+    });
+    ctx.restore();
+  });
+  y += quoteH + 36;
+  // where it is from
+  const f = theme.easing.enter(prog(local, 0.6 + lines.length * 0.18, 0.5));
+  ctx.globalAlpha *= f;
+  ctx.font = bodyFont(theme, 26, 500);
+  ctx.fillStyle = alpha(theme.colors.text, 0.6);
+  if (d.url) ctx.fillText(shortUrl(d.url), x + pad, y + footH / 2);
+  if (d.license) {
+    ctx.textAlign = "right";
+    ctx.fillText(d.license, x + cardW - pad, y + footH / 2);
+  }
+  ctx.restore();
+}
+
+/**
+ * The list of every source the script names: publisher, title, date, link and licence.
+ * Stands still (shrinking to fit) or, with `roll`, travels up through the frame.
+ */
+export function drawSources(rc: RenderCtx, d: { heading: string; items: { title: string; by: string; date: string; url: string; license: string }[]; roll: boolean }, local: number, p: number) {
+  const { ctx, theme, width: W, height: H } = rc;
+  const rowH = 96, headH = 130;
+  const blockH = headH + Math.max(1, d.items.length) * rowH;
+  const k = d.roll ? 1 : Math.max(0.5, Math.min(1, (H - 140) / blockH));
+  const left = W / 2 - 700;
+  ctx.save();
+  if (d.roll) ctx.translate(0, H + 40 - p * (blockH + H + 80));
+  else ctx.translate(0, H / 2 - (blockH * k) / 2);
+  ctx.translate(left, 0);
+  ctx.scale(k, k);
+  const a = d.roll ? 1 : theme.easing.enter(prog(local, 0, 0.6));
+  ctx.globalAlpha *= a;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  ctx.font = displayFont(theme, 72);
+  ctx.fillStyle = theme.colors.text;
+  ctx.fillText(displayText(theme, d.heading), 0, 50);
+  ctx.fillStyle = theme.colors.accent;
+  fillRound(ctx, 0, 100, 120, 8, theme.radius ? 4 : 0);
+  if (!d.items.length) {
+    ctx.font = bodyFont(theme, 32, 500);
+    ctx.fillStyle = alpha(theme.colors.text, 0.6);
+    ctx.fillText("No sources yet: add cite or source lines to the script.", 0, headH + 40);
+  }
+  d.items.forEach((s, i) => {
+    const y = headH + i * rowH;
+    const q = d.roll ? 1 : theme.easing.enter(prog(local, 0.3 + i * 0.08, 0.5));
+    if (q <= 0) return;
+    ctx.save();
+    ctx.globalAlpha *= q;
+    ctx.font = bodyFont(theme, 32, 700);
+    ctx.fillStyle = theme.colors.text;
+    const head = [s.by, s.title && `“${s.title}”`, s.date].filter(Boolean).join(" · ");
+    ctx.fillText(head, 0, y + 30, 1400);
+    ctx.font = bodyFont(theme, 26, 500);
+    ctx.fillStyle = alpha(theme.colors.text, 0.6);
+    ctx.fillText([s.url && shortUrl(s.url, 90), s.license].filter(Boolean).join("  ·  "), 0, y + 68, 1400);
+    ctx.restore();
+  });
+  ctx.restore();
+}

@@ -1,24 +1,36 @@
 /** A complete script in the studio language. The test suite parses it, so the reference can't drift from the parser. */
 export const EXAMPLE_SCRIPT = `project "The Price of Coffee" theme clean_modern
+narrator speed 1
 
 headline "Coffee prices hit a record high" paper "THE MORNING LEDGER" body "Drought cut supply just as demand kept climbing." mark "record high" over 3s enter drop
 camera zoom 1.15 over 4s ease smooth
-wait 4.5s
+narrate "Coffee has never been this expensive."
+narrate "And the reason starts thousands of miles from your kitchen."
 push 0.6
 
 line "Arabica price, $ per lb" "2019" 1.0 "2020" 1.1 "2021" 1.9 "2022" 2.2 over 3s as price enter blur
 unverified price
-wait 3.5s
+narrate "In three years, the price of arabica beans roughly doubled."
+wait 1s
 whip 0.5
+
+cite "The exact words from the article, one or two sentences at most." from "Article title" by "Publisher" date "12 March 2024" url https://example.org/article
+narrate "Here is how one newspaper put it."
+wait 2.5s
+wipe 0.6
 
 count 70 suffix "%" label "Share of beans from five countries" over 2s as share enter pop
 source share "Example Report" https://example.org
 wiggle share over 0.8s delay 2s
-wait 3.5s
+narrate "Most of the world's beans come from just five countries."
 wipe 0.6
 
 say "Your morning cup is a *climate* story" beat 0.35s enter rise
-wait 3s
+narrate "So your morning cup is a climate story."
+crossfade 0.6
+
+sources
+wait 4s
 `;
 
 /** A map scene. Needs the bundled country outlines; the test loads them. */
@@ -62,10 +74,10 @@ WHAT THIS TOOL IS
 - Projects stay in this browser: scripts autosave locally, audio stays in local browser storage. No accounts, uploads to a service or built-in AI generation. The site, speech recognition model and map providers still require network downloads.
 
 HOW THE USER WORKS
-1. Start with Examples or write in the Script editor. Use the canvas tools and Elements/Animate/Transitions/Camera controls to edit by hand. Play, Restart and the timeline let you review the result.
-2. Upload pictures into Media and refer to their exact @asset names. Do not assume a picture, logo or audio file exists unless the user has uploaded it. The three built-in photos are listed below.
-3. Use + Map to open the dedicated map creator. Name and save the map, then choose Save and add to video. The video includes it with include map "Map name". Included map objects are locked in the video; reopen the map creator to change them. Its Help describes its separate classic map grammar; the MAPS section below is the studio's grammar, not a promise that it can be pasted unchanged into the classic map editor.
-4. Add Narration to upload speech. Local Whisper speech recognition produces editable subtitle lines. Add Music separately for a looping background track. Review automatic transcripts for mistakes.
+1. Start with Examples or write in the Script panel on the right. The rail on the left holds Add (cards, text, charts, narration, source quotes, credits, shapes), Assets (pictures and the icon library), Motion (entrances, exits, emphasis, transitions, camera moves), Audio and Maps: click an item to add it at the playhead or drag it onto the preview. The drawing tools sit above the preview. Play, Restart and the timeline let you review the result.
+2. Upload pictures in Assets and refer to their exact @asset names. Do not assume a picture, logo or audio file exists unless the user has uploaded it. The three built-in photos are listed below.
+3. In the Maps panel, New map opens the dedicated map creator. Name and save the map, then choose Save and add to video. The video includes it with include map "Map name". Included map objects are locked in the video; reopen the map creator to change them. Its Help describes its separate classic map grammar; the MAPS section below is the studio's grammar, not a promise that it can be pasted unchanged into the classic map editor.
+4. narrate lines are read aloud in the preview by the browser's built-in voice as a placeholder, so the timing can be judged before anything is recorded (it is not in the exported file). In Audio, Copy the narration gives the text to record; upload the recording as Narration and local Whisper speech recognition produces editable subtitle lines. Add Music separately for a looping background track. Review automatic transcripts for mistakes.
 5. Use Save/Open for project files. Audio is stored separately in the browser and is not bundled in the project file. Export offers 1080p, 4K, vertical and a time range; MP4 is used when supported, with a WebM fallback.
 6. To use an external LLM, paste this explanation into its chat and describe the desired video. Copy its script, choose Paste from AI in the studio, check the validation result, then load it. On script errors, the last valid preview remains visible.
 
@@ -142,6 +154,27 @@ year "1991" highlight
 legend "Label" green
 legend auto
 remove last | arrows | pins | labels | colors | effects | lines | legend | year | all
+
+NARRATION (write it: it sets the pace of the video)
+narrator speed 1 lang "en-US"                  (optional, before the first narrate: speed 0.8 to 1.3; lang picks the browser voice; add the word subtitles to also show each line as a subtitle)
+narrate "One or two short sentences the narrator says."
+narrate "Spoken while the next visuals start, without holding them up." nowait
+- When you write a video script, write its narration as narrate lines, unless the user says they already have a recording.
+- The script waits on each narrate line until it has been said (about 155 words a minute), then goes on. Put the visuals for a sentence on the lines just before its narrate line: they appear as it starts and stay while it is spoken. Add a short wait after a line when the picture should hold a moment longer.
+- Write for the ear: short sentences, one idea per line, numbers as people say them.
+
+QUOTING SOURCES (attribute every time; quote little)
+cite "The exact words, one or two sentences." from "Title of the article or page" by "Publisher or author" date "12 March 2024" url https://example.org/article
+cite "The exact words from Wikipedia." from "Article title" by "Wikipedia" date "accessed 12 March 2024" url https://en.wikipedia.org/wiki/Article_title license "CC BY-SA 4.0"
+sources                                         (a closing card listing every cite and source in the script; add over 8s to roll it up the screen)
+- cite shows a short passage of text as a clipping, with who published it, its title, its date, its link and its licence on screen next to the words.
+- Quote word for word and briefly: one or two sentences, at most about 40 words, only what the point needs, and talk about it in the narration. Quoting a little in order to discuss, explain or criticise it is what fair use and the right of quotation allow; long passages and whole articles are not.
+- Quote only words the user gave you or that you are certain are exact. If you are not sure of the wording, do not use cite: put it in your own words with say or narrate, and name the source with source on that object.
+- Every cite has by, from, date and url. If the publication date is unknown, write the date it was read: date "accessed 12 March 2024".
+- Wikipedia and other Creative Commons texts need their licence: license "CC BY-SA 4.0" for Wikipedia, with the url of the exact article. If you shorten or change the passage, write license "CC BY-SA 4.0, adapted".
+- No images, logos or screenshots taken from the web or from articles: use only pictures the user uploads. A cite card is text only.
+- A video that cites anything ends with a sources card.
+- This is guidance, not legal advice: the user decides what their use and country allow.
 
 COLOURS
 Map palette: red orange yellow gold green teal cyan blue indigo purple pink magenta brown gray white maroon coral salmon tan navy lime

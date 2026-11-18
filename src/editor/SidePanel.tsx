@@ -9,6 +9,8 @@ export type PanelId = "add" | "assets" | "motion" | "audio" | "maps";
 
 /** Everything the Add panel offers. {x} {y} become the drop point (or the centre on click). */
 const ELEMENTS: { label: string; hint: string; cmd: string }[] = [
+  { label: "Narration", hint: "A sentence the placeholder voice says", cmd: 'narrate "What the narrator says at this point."' },
+  { label: "Quote a source", hint: "Exact words with publisher, date, link", cmd: 'cite "The exact words, one or two sentences." from "Article title" by "Publisher" date "1 January 2025" url https://example.org' },
   { label: "Title card", hint: "Big heading with a line under it", cmd: 'title "A *big* idea" sub "and the line under it" at {x} {y}' },
   { label: "Lower third", hint: "Name plate, bottom left", cmd: 'lower "Jane Doe" "Astrophysicist"' },
   { label: "Quote", hint: "Words and who said them", cmd: 'quote "Something worth *remembering*" by "Who said it" at {x} {y}' },
@@ -17,6 +19,7 @@ const ELEMENTS: { label: string; hint: string; cmd: string }[] = [
   { label: "Bar chart", hint: "Bars that grow in", cmd: 'bars "Title" "A" 30 "B" 70 "C" 50 at {x} {y} over 2s enter rise' },
   { label: "Line chart", hint: "A line that draws itself", cmd: 'line "Title" "2020" 1 "2021" 3 "2022" 2 "2023" 6 at {x} {y} over 2s enter blur' },
   { label: "Headline", hint: "Newspaper with a highlighter", cmd: 'headline "A headline worth reading" paper "THE DAILY" mark "worth" at {x} {y} over 2s enter drop' },
+  { label: "Sources list", hint: "Every source the script names", cmd: "sources" },
   { label: "End credits", hint: "Roles and names that roll up", cmd: 'credits "Thanks for watching" "Script" "Your name" "Music" "Composer" over 8s' },
   { label: "Arrow", hint: "Points at something", cmd: "arrow from {x} {y} to {x2} {y2} over 0.5s" },
   { label: "Circle", hint: "Rings something", cmd: "circle at {x} {y} radius 100 over 0.6s" },
@@ -135,7 +138,7 @@ export function SidePanel(p: Props) {
           {p.panel === "add" && <AddPanel {...p} />}
           {p.panel === "assets" && <AssetsPanel {...p} />}
           {p.panel === "motion" && <MotionPanel {...p} />}
-          {p.panel === "audio" && <Section title="Audio" hint="Narration becomes the voiceover and is turned into subtitles on this computer. Music loops quietly under the whole video.">{p.audio}</Section>}
+          {p.panel === "audio" && p.audio}
           {p.panel === "maps" && <MapsPanel {...p} />}
         </div>
       )}

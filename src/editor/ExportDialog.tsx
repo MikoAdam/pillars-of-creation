@@ -81,6 +81,7 @@ export function ExportDialog({ timeline, theme, assets, voice, music, onClose }:
         )}
         <p className="mb-4 text-xs text-muted-foreground">
           {fmt(r1 - r0)} long, {frameCount(r0, r1)} frames at 30 fps{voice ? ", with voiceover" : ""}{music ? ", with music" : ""}.
+          {!voice && timeline.narration?.length ? " The placeholder voice is heard only in the preview; it is not in the file." : ""}
         </p>
 
         {prog && (

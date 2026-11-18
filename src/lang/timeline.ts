@@ -4,7 +4,7 @@ import { attackCurve } from "@/render/scenes/map";
 
 export type ObjKind = "photo" | "count" | "bars" | "line" | "headline" | "say" | "arrow" | "circle" | "box" | "highlight"
   | "map" | "pin" | "bubble" | "label" | "tag" | "attack" | "route" | "year" | "legend" | "effect"
-  | "title" | "lower" | "quote" | "credits" | "icon" | "image";
+  | "title" | "lower" | "quote" | "credits" | "icon" | "image" | "narration" | "cite" | "sources";
 
 /** Map camera tracks stored on a map object: pos = [lat, lng]. */
 export interface MapCamTracks { pos: Track; zoom: Track; tilt: Track; turn: Track }
@@ -137,7 +137,16 @@ export interface Timeline {
   music?: { name: string; volume: number } | undefined;
   /** timed subtitle lines, absolute seconds */
   subs?: { t0: number; t1: number; text: string; line: number }[];
+  /** placeholder narration: what the browser's built-in voice says, and when */
+  narration?: { t0: number; t1: number; text: string; line: number }[];
+  /** placeholder voice settings (`narrator`) */
+  narrator?: { speed: number; voice: string; lang: string; subtitles: boolean };
+  /** every source the script names (`cite` and `source`), in order */
+  citations?: Citation[];
 }
+
+/** A written source: who published it, what it is called, when, where, and under which licence. */
+export interface Citation { title: string; by: string; date: string; url: string; license: string; line: number }
 
 export const emptyCamera = (): Camera => ({ pos: { base: [960, 540], segs: [] }, zoom: { base: [1], segs: [] }, shakes: [] });
 

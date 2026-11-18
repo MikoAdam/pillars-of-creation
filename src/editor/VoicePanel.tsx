@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Mic, Captions, Music } from "lucide-react";
+import { Mic, Captions, Music, Copy } from "lucide-react";
 import type { AudioItem } from "./audioStore";
 
 interface Props {
@@ -14,13 +14,16 @@ interface Props {
   onUse: (name: string) => void;
   onSubtitles: (name: string) => void;
   onRemove: (name: string) => void;
+  /** placeholder narration in the script: how many lines and how long they take */
+  narration?: { lines: number; seconds: number } | undefined;
+  onCopyNarration?: () => void;
 }
 
-export function VoicePanel({ voices, active, activeMusic, status, progress, onUpload, onUploadMusic, onUse, onMusic, onSubtitles, onRemove }: Props) {
+export function VoicePanel({ voices, active, activeMusic, status, progress, onUpload, onUploadMusic, onUse, onMusic, onSubtitles, onRemove, narration, onCopyNarration }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const musicInput = useRef<HTMLInputElement>(null);
   return (
-    <div className="border-b border-border p-2">
+    <div>
       <div className="mb-1 flex items-center justify-between">
         <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Audio</span>
         <span className="flex items-center gap-1">
@@ -44,6 +47,20 @@ export function VoicePanel({ voices, active, activeMusic, status, progress, onUp
             <button onClick={() => onRemove(v.name)} className="text-muted-foreground hover:text-foreground">✕</button>
           </div>
         ))}
+      </div>
+      <div className="mt-3 rounded-md border border-border p-2 text-[11px] leading-snug text-muted-foreground">
+        <div className="mb-1 font-semibold text-foreground">Placeholder voice</div>
+        {narration?.lines
+          ? <>
+              {narration.lines} <span className="font-mono">narrate</span> line{narration.lines === 1 ? "" : "s"}, {Math.round(narration.seconds)} s in all.{" "}
+              {active ? "Your recording plays instead." : "Your browser's built-in voice reads them in the preview, at the pace the script is timed to. It is not in the exported file."}
+              {onCopyNarration && (
+                <button onClick={onCopyNarration} className="mt-1.5 flex items-center gap-1 rounded px-1.5 py-0.5 text-foreground hover:bg-secondary">
+                  <Copy className="h-3 w-3" /> Copy the narration to record it
+                </button>
+              )}
+            </>
+          : <>Write <span className="font-mono">narrate "…"</span> lines (or ask the AI to) and a machine voice reads them in the preview, so you can judge the timing before recording.</>}
       </div>
       {status && <p className="mt-1 text-[11px] text-primary">{status}</p>}
       {progress !== null && (

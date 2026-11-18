@@ -8,7 +8,7 @@ import { renderBarChart } from "@/render/scenes/barChart";
 import { renderLineChart } from "@/render/scenes/lineChart";
 import { renderHeadline } from "@/render/scenes/headlineHighlight";
 import { renderKineticText } from "@/render/scenes/kineticText";
-import { drawCredits, drawLowerThird, drawQuote, drawTitleCard } from "@/render/scenes/cards";
+import { drawCite, drawCredits, drawLowerThird, drawQuote, drawSources, drawTitleCard } from "@/render/scenes/cards";
 import { drawIcon, drawImage } from "@/render/scenes/stickers";
 import { alpha, bodyFont, fillRound } from "@/render/theme";
 import { wrapText } from "@/render/text";
@@ -218,6 +218,8 @@ function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets
     case "lower": drawLowerThird(rc, d, local); break;
     case "quote": drawQuote(rc, d, local); break;
     case "credits": drawCredits(rc, d, local, over > 0 ? clamp01(local / over) : 1); break;
+    case "cite": drawCite(rc, d, local); break;
+    case "sources": drawSources(rc, d, local, over > 0 ? clamp01(local / over) : 1); break;
     case "icon": drawIcon(rc, d, o.origin[0], o.origin[1]); break;
     case "image": drawImage(rc, d, o.origin[0], o.origin[1]); break;
     case "arrow": drawArrow(ctx, d.a, d.b, p, theme); break;

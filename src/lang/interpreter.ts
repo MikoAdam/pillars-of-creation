@@ -5,6 +5,7 @@ import { CSS_COLOR_NAMES, MAP_COLORS, MAP_COLOR_NAMES, findCountry, findRegion, 
 import { EFFECTS, type EffectName } from "@/render/effectsSymbols";
 import { SYMBOLS, type SymbolName } from "@/render/symbols";
 import { CARD_SCALE, type MapFill } from "@/render/scenes/map";
+import { NARRATION_GAP, speechSeconds } from "./narration";
 import { addSeg, emptyCamera, sample, EASES, EASE_NAMES, FX_STYLES, type FxStyle, type ObjKind, type Seg, type TObj, type Timeline, type Track, type Trans } from "./timeline";
 
 export const THEME_NAMES: Record<string, string> = {
@@ -21,7 +22,7 @@ export const COMMANDS = [
   "highlight", "voice", "subtitle", "rotate", "camera", "shake", "pulse", "wiggle", "wipe", "push", "whip", "blur",
   "map", "fly", "country", "region", "attack", "route", "pin", "bubble", "label", "tag", "year", "legend", "remove",
   "cinematic", "effect", "clear", "clearregions", "rename", "unrename",
-  "title", "lower", "quote", "music", "credits", "icon", "image",
+  "title", "lower", "quote", "music", "credits", "icon", "image", "narrate", "narrator", "cite", "sources",
   "let", "repeat", "for", "end", "include",
 ];
 
@@ -56,6 +57,9 @@ const KW: Record<string, Record<string, number>> = {
   lower: { at: 2 },
   quote: { at: 2, by: 1 },
   credits: { at: 2 },
+  narrator: { speed: 1, voice: 1, lang: 1 },
+  cite: { from: 1, by: 1, date: 1, url: 1, license: 1, at: 2 },
+  sources: { at: 2 },
   icon: { at: 2, size: 1, color: 1 },
   image: { at: 2, size: 1 },
   arrow: { from: 2, to: 2 },
@@ -483,6 +487,57 @@ export function interpret(src: string, opts: RunOptions = {}): Timeline {
         makeObj("quote", p, s, start, [W / 2, H / 2], [W / 2 - 700, H / 2 - 320, 1400, 640], { text, by });
         return;
       }
+      case "narrator": {
+        const n = { speed: 1, voice: "", lang: "", subtitles: false, ...tl.narrator };
+        const sg = kw1(p, "speed");
+        if (sg) n.speed = Math.min(3, Math.max(0.3, num(sg[1], "a speed such as 1.1", sg[0]).v));
+        if (kw1(p, "voice")) n.voice = str(kw1(p, "voice")![1], "a voice name", kw1(p, "voice")![0]);
+        if (kw1(p, "lang")) n.lang = str(kw1(p, "lang")![1], 'a language such as "en-GB"', kw1(p, "lang")![0]);
+        for (const a of p.pos) {
+          if (a.kind !== "word" || (a.name !== "subtitles" && a.name !== "nosubtitles")) err('Use speed, voice, lang, subtitles or nosubtitles after narrator', a);
+          n.subtitles = (a as { name: string }).name === "subtitles";
+        }
+        tl.narrator = n;
+        return;
+      }
+      case "narrate": {
+        // placeholder narration: spoken by the browser's voice in the preview; the script waits for it
+        const text = str(src(0), "the words to say, in quotes", near);
+        let wait = true;
+        for (const a of p.pos.slice(1)) {
+          if (a.kind === "word" && a.name === "nowait") wait = false;
+          else err('Only "nowait" can follow the words of narrate', a);
+        }
+        const d = speechSeconds(text, tl.narrator?.speed ?? 1);
+        const o = makeObj("narration", p, s, start, [W / 2, H / 2], [-10, -10, 0, 0], { text });
+        o.end = start + d;
+        (tl.narration ??= []).push({ t0: start, t1: start + d, text, line: s.line });
+        if (tl.narrator?.subtitles) (tl.subs ??= []).push({ t0: start, t1: start + d, text: text.replace(/\*/g, ""), line: s.line });
+        if (wait) cursor = Math.max(cursor, start + d + NARRATION_GAP);
+        bump(start + d + (wait ? NARRATION_GAP : 0));
+        return;
+      }
+      case "cite": {
+        const text = str(src(0), "the exact words you quote, in quotes", near);
+        const g = (k: string) => (kw1(p, k) ? str(kw1(p, k)![1], k === "from" ? "the title of the page or article" : k, kw1(p, k)![0]) : "");
+        const ug = kw1(p, "url");
+        let url = "";
+        if (ug) {
+          if (ug[1].kind !== "url") err("url needs a link that starts with https://", ug[1]);
+          url = (ug[1] as { v: string }).v;
+        }
+        const c = { title: g("from"), by: g("by"), date: g("date"), url, license: g("license") };
+        if (!c.title && !c.by) err('Say where the words come from: cite "..." from "Title" by "Publisher" date "..." url https://...', near);
+        (tl.citations ??= []).push({ ...c, line: s.line });
+        makeObj("cite", p, s, start, [W / 2, H / 2], [W / 2 - 660, H / 2 - 300, 1320, 600], { text, ...c });
+        return;
+      }
+      case "sources": {
+        // the list is filled in at the end, so it names every source in the script
+        const heading = src(0) ? str(src(0), "a heading", near) : "Sources";
+        makeObj("sources", p, s, start, [W / 2, H / 2], [W / 2 - 760, 80, 1520, H - 160], { heading, items: [], roll: !!kw1(p, "over") });
+        return;
+      }
       case "credits": {
         // credits "Heading" "Role" "Name" "Role" "Name" ... ; with "over" they roll, without they stand still
         const texts = p.pos.map((a) => str(a, "credit text", near));
@@ -574,6 +629,7 @@ export function interpret(src: string, opts: RunOptions = {}): Timeline {
         const text = str(src(1), "source name", src(0)!);
         const u = src(2);
         o.data.source = { text, url: u && u.kind === "url" ? u.v : "" };
+        (tl.citations ??= []).push({ title: "", by: text, date: "", url: o.data.source.url, license: "", line: s.line });
         o.lines.push(s.line);
         return;
       }
@@ -1252,5 +1308,12 @@ export function interpret(src: string, opts: RunOptions = {}): Timeline {
   bump(cursor);
   tl.duration = Math.max(1, maxT + 0.5);
   for (const o of tl.objects) if (o.end === Infinity) o.end = tl.duration;
+  // a source named twice is listed once
+  const seen = new Set<string>();
+  const unique = (tl.citations ?? []).filter((c) => {
+    const k = `${c.by}|${c.title}|${c.url}`.toLowerCase();
+    return seen.has(k) ? false : (seen.add(k), true);
+  });
+  for (const o of tl.objects) if (o.kind === "sources") o.data.items = unique;
   return tl;
 }

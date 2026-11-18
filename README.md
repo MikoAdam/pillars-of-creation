@@ -87,6 +87,16 @@ complete reference; its examples are parsed by the test suite so it cannot drift
 Two looks ship: `clean_modern` (light) and `midnight` (dark, with grain). The **Style** panel
 adjusts colours and fonts and writes `style` lines into the script.
 
+## Quoting sources
+
+`cite "The exact words." from "Article title" by "Publisher" date "12 March 2024" url https://...`
+shows a short passage of text as a clipping, with the publisher, title, date, link and (for
+Wikipedia and other Creative Commons text) `license "CC BY-SA 4.0"` on screen next to it. The
+look follows the project's style. `sources` makes a closing card that lists every `cite` and
+`source` in the script, once each (`over 8s` rolls it). The AI reference tells the model to
+quote only a sentence or two, word for word, to attribute every quote, and never to use
+pictures from the web. This is how quotation and fair use are normally done, not legal advice.
+
 ## Maps
 
 Maps are made in the map tool, which opens inside the studio from the **Maps** panel (**New map**). Build the map there
@@ -100,6 +110,12 @@ own at `/map-tool/index.html`.
 
 ## Audio
 
+- **Placeholder voice:** write the narration as `narrate "..."` lines. The script waits on each
+  line for as long as it takes to say (about 155 words a minute; `narrator speed 1.1` changes the
+  pace), and the browser's built-in voice reads it aloud in the preview, so the timing can be
+  judged before anything is recorded. It is a free system voice and is not in the exported file
+  (browsers don't let a page record it); `narrator subtitles` shows the lines as subtitles
+  instead. **Copy the narration** in the Audio panel gives the text to record.
 - **Narration:** upload a recording and it becomes the voiceover. Subtitles are written into the
   script automatically by an open-source speech model (Whisper) running in a web worker; the audio
   never leaves the machine.

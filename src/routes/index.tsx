@@ -13,6 +13,7 @@ import { activeLinesAt, mapCamAt, styleValues, type Timeline, type TObj } from "
 import { insertAtTime, removeFx, resetStyle, setStyle, writeFx, writeMove, writeOver, writeProp, writeScale, writeStart, writeGeoMove, writeGeoEnd, writeBend, writeMapCam, writeDelete, writeReverse, writeColor } from "@/lang/writeback";
 import { Inspector, MapLocked } from "@/editor/Library";
 import { SidePanel, type PanelId } from "@/editor/SidePanel";
+import { PlaceholderVoice } from "@/editor/narrator";
 import { getMapCode, listMaps, saveMap, uniqueMapName } from "@/editor/mapStore";
 import { PasteScript } from "@/editor/PasteScript";
 import { applyStyle, getTheme, THEMES } from "@/render/theme";
@@ -239,6 +240,21 @@ function Studio() {
     a.volume = musicVolume;
     if (playing && music) { a.currentTime = musicTime(a, tRef.current); void a.play().catch(() => {}); } else a.pause();
   }, [playing, music, musicVolume]);
+  // placeholder narration: the browser's voice reads `narrate` lines, unless a recording is in use
+  const placeholder = useRef<PlaceholderVoice | null>(null);
+  useEffect(() => {
+    placeholder.current ??= new PlaceholderVoice();
+    const pv = placeholder.current;
+    if (voice) pv.stop();
+    else pv.update(timeline.narration ?? [], t, playing, timeline.narrator);
+  }, [t, playing, timeline, voice]);
+  useEffect(() => () => placeholder.current?.stop(), []);
+  const copyNarration = async () => {
+    const text = (timeline.narration ?? []).map((l) => l.text.replace(/\*/g, "")).join("\n\n");
+    try { await navigator.clipboard.writeText(text); setNotice("Narration copied: read it aloud, record it, and upload the recording as Narration."); }
+    catch { setNotice("Your browser blocked copying."); }
+  };
+
   const scrub = useCallback((v: number) => {
     seek(v);
     const a = audioRef.current;
@@ -612,6 +628,8 @@ function Studio() {
               onUse={(n) => hand(useVoice(n))}
               onSubtitles={makeSubtitles}
               onRemove={(n) => { setVoices((v) => v.filter((x) => x.name !== n)); void deleteAudio(n); }}
+              narration={timeline.narration?.length ? { lines: timeline.narration.length, seconds: timeline.narration.reduce((a, l) => a + l.t1 - l.t0, 0) } : undefined}
+              onCopyNarration={() => void copyNarration()}
             />
           }
         />
