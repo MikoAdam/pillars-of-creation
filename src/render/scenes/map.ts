@@ -127,7 +127,8 @@ interface MapView {
   flat: { m: [number, number, number, number, number, number]; vx0: number; vx1: number; vy0: number; vy1: number } | null;
   land?: Path2D;
   paths: Map<GeoFeature, Path2D>;
-  base?: HTMLCanvasElement;
+  /** the camera this view is for */
+  key: string;
   uses: number;
 }
 
@@ -236,7 +237,7 @@ function viewFor(cam: MapCam, countries: GeoFeature[]): MapView {
       vy0: Math.min(...corners.map((q) => q[1])), vy1: Math.max(...corners.map((q) => q[1])),
     };
   }
-  const view: MapView = { pr, cx, lod, boxes, flat, paths: new Map(), uses: 0 };
+  const view: MapView = { key, pr, cx, lod, boxes, flat, paths: new Map(), uses: 0 };
   if (views.size >= VIEW_LIMIT) views.delete(views.keys().next().value as string);
   views.set(key, view);
   return view;
@@ -279,6 +280,95 @@ function paintBase(g: CanvasRenderingContext2D, view: MapView, cam: MapCam, coun
   g.globalAlpha /= 0.8;
 }
 
+/** How one colouring looks at time t; `done` once its animation has finished and it holds still. */
+interface FillLook { fa: number; oa: number; ow: number; done: boolean }
+function fillLook(f: MapFill, t: number): FillLook | null {
+  const local = t - f.t0;
+  const p = clamp01(local / Math.max(0.01, f.d));
+  let fa = 0, oa = 0, ow = 4 * S;
+  let done = local >= 0.05;
+  if (f.occupied) {
+    fa = 0.8 * clamp01(local / 0.05);
+    oa = fa;
+    ow = 3 * S;
+  } else {
+    if (f.anim !== "none") done = p >= 1;
+    switch (f.anim) {
+      case "none": fa = 0.7 * clamp01(local / 0.05); oa = fa; ow = 4 * S; break;
+      case "pulse": { const e = out(p); fa = 0.7 * e; oa = 0.7 * e; ow = (6 - 2 * p) * S; break; }
+      case "fade": { fa = 0.7 * p; oa = 0.7 * p; ow = 3 * S; break; }
+      case "radial": { const e = smooth(p); fa = 0.7 * e; oa = Math.min(1, e * 1.5); ow = (8 - 4 * p) * S; break; }
+      case "sweep": { ow = (8 - 4 * smooth(p)) * S; oa = 1; fa = p < 0.3 ? 0 : 0.7 * clamp01((p - 0.3) / 0.7); break; }
+    }
+  }
+  return fa <= 0 && oa <= 0 ? null : { fa, oa, ow, done };
+}
+
+/**
+ * Draw colourings. Plain ones that look alike (same colour, strength and outline) are drawn as
+ * one shape: one fill and one softly blurred outline for all of them. The blur is the costly
+ * part, so a map with forty coloured countries costs about as much as one with a single colour.
+ */
+function drawFills(ctx: CanvasRenderingContext2D, view: MapView, items: { f: MapFill; look: FillLook }[]) {
+  const groups = new Map<string, { color: string; look: FillLook; path: Path2D }>();
+  for (const { f, look } of items) {
+    const path = featurePath(view, f.feature!);
+    if (f.occupied) {
+      const b = view.boxes.get(f.feature!) ?? screenBox(f.feature!, view.pr, view.cx);
+      ctx.save();
+      ctx.clip(path, "evenodd");
+      ctx.globalAlpha *= look.fa;
+      ctx.fillStyle = stripePattern(ctx, f.color);
+      ctx.fillRect(b[0] - T2, b[1] - T2, b[2] - b[0] + 2 * T2, b[3] - b[1] + 2 * T2);
+      ctx.restore();
+      ctx.save();
+      ctx.globalAlpha *= look.oa;
+      ctx.strokeStyle = darken(f.color, 0.3);
+      ctx.lineWidth = look.ow;
+      ctx.setLineDash([8 * S, 5.3 * S]);
+      ctx.stroke(path);
+      ctx.restore();
+      continue;
+    }
+    const k = `${f.color}|${look.fa}|${look.oa}|${look.ow}`;
+    let g = groups.get(k);
+    if (!g) { g = { color: f.color, look, path: new Path2D() }; groups.set(k, g); }
+    g.path.addPath(path);
+  }
+  for (const { color, look, path } of groups.values()) {
+    if (look.fa > 0) {
+      ctx.save();
+      ctx.globalAlpha *= look.fa;
+      ctx.fillStyle = color;
+      ctx.fill(path, "evenodd");
+      ctx.restore();
+    }
+    if (look.oa > 0) {
+      ctx.save();
+      ctx.globalAlpha *= look.oa;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = look.ow;
+      ctx.filter = `blur(${(3 * S).toFixed(1)}px)`;
+      ctx.stroke(path);
+      ctx.restore();
+    }
+  }
+}
+
+/** The still picture of a held camera, and the picture seen on the frame before (kept once seen twice). */
+let still: { key: string; c: HTMLCanvasElement } | null = null;
+let seenKey = "";
+/** A number per map's list of colourings, so two maps with the same camera never share a still picture. */
+const fillIds = new WeakMap<MapFill[], number>();
+let nextFillId = 0;
+const fillsId = (f: MapFill[]) => { let id = fillIds.get(f); if (id === undefined) { id = ++nextFillId; fillIds.set(f, id); } return id; };
+function blit(ctx: CanvasRenderingContext2D, c: HTMLCanvasElement) {
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(c, 0, 0);
+  ctx.restore();
+}
+
 /** `avoid`: frame rectangles [x, y, w, h] of the markers drawn over this map; country names keep clear of them. */
 export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapCam, fills: MapFill[], labels: boolean, t: number, renames: MapRename[] = [], avoid: Box4[] = [], preview = true) {
   ctx.save();
@@ -296,90 +386,58 @@ export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapC
   const view = viewFor(cam, countries);
   const { pr, cx, boxes } = view;
   view.uses++;
-  if (preview && ctx.canvas.width === PREVIEW_W && view.uses > 1) {
-    if (!view.base) {
-      const c = document.createElement("canvas");
-      c.width = 2320;
-      c.height = 1480;
-      const g = c.getContext("2d")!;
-      g.translate(200, 200);
-      paintBase(g, view, cam, countries);
-      view.base = c;
-    }
-    ctx.drawImage(view.base, -200, -200);
-  } else if (preview && ctx.canvas.width === PREVIEW_W) {
-    // a camera seen once (a frame of a flight): paint at half size into one reused canvas
-    scratch ??= document.createElement("canvas");
-    const c = scratch;
-    c.width = 1160;
-    c.height = 740;
-    const g = c.getContext("2d")!;
-    g.scale(0.5, 0.5);
-    g.translate(200, 200);
-    paintBase(g, view, cam, countries);
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(c, -200, -200, 2320, 1480);
-  } else {
-    paintBase(ctx, view, cam, countries);
-  }
 
-  // colourings — original fill animations (renderer.js drawFeature)
+  // colourings on screen now; the finished ones never change while they last
+  const shown: { f: MapFill; look: FillLook }[] = [];
   for (const f of fills) {
     if (!f.feature || t < f.t0 || t >= f.end) continue;
-    const b = boxes.get(f.feature) ?? screenBox(f.feature, pr, cx);
-    if (!visible(b)) continue;
-    const local = t - f.t0;
-    const p = clamp01(local / Math.max(0.01, f.d));
-    let fa = 0, oa = 0, ow = 4 * S;
-    if (f.occupied) {
-      fa = 0.8 * clamp01(local / 0.05);
-      oa = fa;
-      ow = 3 * S;
-    } else {
-      switch (f.anim) {
-        case "none": fa = 0.7 * clamp01(local / 0.05); oa = fa; ow = 4 * S; break;
-        case "pulse": { const e = out(p); fa = 0.7 * e; oa = 0.7 * e; ow = (6 - 2 * p) * S; break; }
-        case "fade": { fa = 0.7 * p; oa = 0.7 * p; ow = 3 * S; break; }
-        case "radial": { const e = smooth(p); fa = 0.7 * e; oa = Math.min(1, e * 1.5); ow = (8 - 4 * p) * S; break; }
-        case "sweep": { ow = (8 - 4 * smooth(p)) * S; oa = 1; fa = p < 0.3 ? 0 : 0.7 * clamp01((p - 0.3) / 0.7); break; }
-      }
-    }
-    if (fa <= 0 && oa <= 0) continue;
-    const path = featurePath(view, f.feature);
-    ctx.save();
-    if (f.occupied) {
-      ctx.save();
-      ctx.clip(path, "evenodd");
-      ctx.globalAlpha *= fa;
-      ctx.fillStyle = stripePattern(ctx, f.color);
-      ctx.fillRect(b[0] - T2, b[1] - T2, b[2] - b[0] + 2 * T2, b[3] - b[1] + 2 * T2);
-      ctx.restore();
-      ctx.save();
-      ctx.globalAlpha *= oa;
-      ctx.strokeStyle = darken(f.color, 0.3);
-      ctx.lineWidth = ow;
-      ctx.setLineDash([8 * S, 5.3 * S]);
-      ctx.stroke(path);
-      ctx.restore();
-    } else {
-      if (fa > 0) {
-        ctx.globalAlpha *= fa;
-        ctx.fillStyle = f.color;
-        ctx.fill(path, "evenodd");
-      }
-      if (oa > 0) {
-        ctx.save();
-        ctx.globalAlpha *= oa;
-        ctx.strokeStyle = f.color;
-        ctx.lineWidth = ow;
-        ctx.filter = `blur(${(3 * S).toFixed(1)}px)`;
-        ctx.stroke(path);
-        ctx.restore();
-      }
-    }
-    ctx.restore();
+    if (!visible(boxes.get(f.feature) ?? screenBox(f.feature, pr, cx))) continue;
+    const look = fillLook(f, t);
+    if (look) shown.push({ f, look });
   }
+  const done = shown.filter((x) => x.look.done);
+  const moving = shown.filter((x) => !x.look.done);
 
+  // A camera that holds still: ocean, land, borders and the finished colourings are the same
+  // picture frame after frame, so it is painted once and reused (blurred outlines are costly).
+  const m = ctx.getTransform();
+  const key = [view.key, ctx.canvas.width, ctx.canvas.height, m.a, m.b, m.c, m.d, m.e, m.f, preview ? "p" : "f", fillsId(fills), done.map((x) => fills.indexOf(x.f)).join(",")].join("|");
+  if (still?.key === key) {
+    blit(ctx, still.c);
+  } else if (seenKey === key) {
+    // second frame in a row with the same picture: keep it
+    still ??= { key: "", c: document.createElement("canvas") };
+    const c = still.c;
+    if (c.width !== ctx.canvas.width || c.height !== ctx.canvas.height) { c.width = ctx.canvas.width; c.height = ctx.canvas.height; }
+    const g = c.getContext("2d")!;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, c.width, c.height);
+    g.setTransform(m);
+    paintBase(g, view, cam, countries);
+    drawFills(g, view, done);
+    still.key = key;
+    blit(ctx, c);
+  } else {
+    seenKey = key;
+    if (preview && ctx.canvas.width === PREVIEW_W) {
+      // a camera seen once (a frame of a flight): paint at half size into one reused canvas
+      scratch ??= document.createElement("canvas");
+      const c = scratch;
+      c.width = 1160;
+      c.height = 740;
+      const g = c.getContext("2d")!;
+      g.scale(0.5, 0.5);
+      g.translate(200, 200);
+      paintBase(g, view, cam, countries);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(c, -200, -200, 2320, 1480);
+    } else {
+      paintBase(ctx, view, cam, countries);
+    }
+    drawFills(ctx, view, done);
+  }
+  // colourings still animating, in script order
+  for (const x of moving) drawFills(ctx, view, [x]);
   if (labels) drawNativeLabels(ctx, theme, cam, pr, countries, boxes, renames, t, avoid);
   ctx.restore();
 }
