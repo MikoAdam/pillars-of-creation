@@ -280,7 +280,7 @@ function paintBase(g: CanvasRenderingContext2D, view: MapView, cam: MapCam, coun
 }
 
 /** `avoid`: frame rectangles [x, y, w, h] of the markers drawn over this map; country names keep clear of them. */
-export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapCam, fills: MapFill[], labels: boolean, t: number, renames: MapRename[] = [], avoid: Box4[] = []) {
+export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapCam, fills: MapFill[], labels: boolean, t: number, renames: MapRename[] = [], avoid: Box4[] = [], preview = true) {
   ctx.save();
   if (!geoReady("countries")) {
     ctx.fillStyle = OCEAN;
@@ -296,7 +296,7 @@ export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapC
   const view = viewFor(cam, countries);
   const { pr, cx, boxes } = view;
   view.uses++;
-  if (ctx.canvas.width === PREVIEW_W && view.uses > 1) {
+  if (preview && ctx.canvas.width === PREVIEW_W && view.uses > 1) {
     if (!view.base) {
       const c = document.createElement("canvas");
       c.width = 2320;
@@ -307,7 +307,7 @@ export function renderMap(ctx: CanvasRenderingContext2D, theme: Theme, cam: MapC
       view.base = c;
     }
     ctx.drawImage(view.base, -200, -200);
-  } else if (ctx.canvas.width === PREVIEW_W) {
+  } else if (preview && ctx.canvas.width === PREVIEW_W) {
     // a camera seen once (a frame of a flight): paint at half size into one reused canvas
     scratch ??= document.createElement("canvas");
     const c = scratch;

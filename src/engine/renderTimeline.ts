@@ -42,6 +42,8 @@ export interface RenderOpts {
   scale?: number;
   /** draw subtitle lines (default true) */
   subtitles?: boolean;
+  /** an exported frame: never take the preview's shortcuts (half-size maps while the camera moves) */
+  final?: boolean;
 }
 
 export function renderTimeline(ctx: CanvasRenderingContext2D, tl: Timeline, theme: Theme, assets: Assets, t: number, override?: Override, opts?: RenderOpts) {
@@ -52,7 +54,7 @@ export function renderTimeline(ctx: CanvasRenderingContext2D, tl: Timeline, them
   const cam = cameraAt(tl, t);
   for (const o of tl.objects) {
     if (!alive(o, t)) continue;
-    drawObject(ctx, o, theme, assets, t, cam, override?.id === o.id ? override : undefined);
+    drawObject(ctx, o, theme, assets, t, cam, override?.id === o.id ? override : undefined, !!opts?.final);
   }
   ctx.setTransform(k, 0, 0, k, 0, 0);
   ctx.globalAlpha = 1;
@@ -108,7 +110,7 @@ function applyFx(ctx: CanvasRenderingContext2D, fx: Fx, raw: number, box: TObj["
   }
 }
 
-function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets: Assets, t: number, cam: Cam, ov?: Override) {
+function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets: Assets, t: number, cam: Cam, ov: Override | undefined, final: boolean) {
   const local = t - o.start;
   let [px, py] = sample(o.pos, t);
   let s = sample(o.scale, t)[0];
@@ -226,7 +228,7 @@ function drawObject(ctx: CanvasRenderingContext2D, o: TObj, theme: Theme, assets
     case "highlight": drawMarker(ctx, d.a, d.b, p, theme); break;
     case "circle": drawCircle(ctx, o.origin, d.r, p, theme); break;
     case "box": drawBox(ctx, o.origin, d.w, d.h, p, theme); break;
-    case "map": renderMap(ctx, theme, mapCamAt(o, t), d.fills, d.labels, t, d.renames ?? [], markerLayout(o, t).boxes); break;
+    case "map": renderMap(ctx, theme, mapCamAt(o, t), d.fills, d.labels, t, d.renames ?? [], markerLayout(o, t).boxes, !final); break;
     case "attack": { const e = geoEnds(o, t); drawAttack(ctx, e.a, e.b, d.bend, d.width, d.head, d.color, p); break; }
     case "route": { const e = geoEnds(o, t); drawRoute(ctx, e.a, e.b, d.color, p, d.straight); break; }
     case "pin": ctx.translate(org[0], org[1]); drawPin(ctx, d.symbol, d.color, d.size, local, mapCamAt(o.data.map, t).zoom); break;

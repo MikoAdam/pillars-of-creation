@@ -14,7 +14,9 @@ export const FORMAT_SIZE: Record<ExportFormat, [number, number]> = {
   vertical: [1080, 1920],
 };
 
-export interface ExportProgress { frame: number; frames: number; elapsed: number; eta: number }
+/** Where the file is being written: straight to disk, to the browser's database on disk, or to memory. */
+export type ExportStorage = "disk" | "database" | "memory";
+export interface ExportProgress { frame: number; frames: number; elapsed: number; eta: number; storage?: ExportStorage }
 export interface ExportJob {
   timeline: Timeline; theme: Theme; assets: Assets;
   format: ExportFormat; from: number; to: number;
@@ -22,6 +24,8 @@ export interface ExportJob {
   music?: { blob: Blob; volume: number } | undefined;
   onProgress: (p: ExportProgress) => void;
   signal: AbortSignal;
+  /** force a storage path (tests and diagnosis); normally the best one available is used */
+  storage?: ExportStorage | undefined;
 }
 
 /** Exact frame count for a range, at 30 fps. */
@@ -36,9 +40,9 @@ export function makeFramePainter(tl: Timeline, theme: Theme, assets: Assets, for
   let src: HTMLCanvasElement | null = null;
   if (format === "vertical") { src = document.createElement("canvas"); src.width = WIDTH; src.height = HEIGHT; }
   const paint = (t: number) => {
-    if (!src) return renderTimeline(ctx, tl, theme, assets, t, undefined, { scale: w / WIDTH });
+    if (!src) return renderTimeline(ctx, tl, theme, assets, t, undefined, { scale: w / WIDTH, final: true });
     // vertical: 16:9 frame in the middle over a soft blurred copy, subtitles underneath
-    renderTimeline(src.getContext("2d")!, tl, theme, assets, t, undefined, { subtitles: false });
+    renderTimeline(src.getContext("2d")!, tl, theme, assets, t, undefined, { subtitles: false, final: true });
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = theme.colors.background;
     ctx.fillRect(0, 0, w, h);
@@ -116,6 +120,72 @@ async function diskTarget() {
   }
 }
 
+/**
+ * Fallback where the private file storage can't be written (Brave, for one): the file goes into
+ * IndexedDB in 8 MB pieces, which the browser keeps on disk. Only the first megabyte stays in
+ * memory, because the file's header is rewritten when it is finished; everything after it is
+ * written once, in order.
+ */
+const DB = "pnt-export", STORE = "pieces", PIECE = 8 << 20, HEAD = 1 << 20;
+function idb<T>(req: IDBRequest<T>) {
+  return new Promise<T>((res, rej) => { req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error); });
+}
+async function databaseTarget() {
+  if (typeof indexedDB === "undefined") return null;
+  try {
+    const open = indexedDB.open(DB, 1);
+    open.onupgradeneeded = () => open.result.createObjectStore(STORE);
+    const db = await idb(open);
+    const tx = (mode: IDBTransactionMode) => db.transaction(STORE, mode).objectStore(STORE);
+    await idb(tx("readwrite").clear()); // earlier exports
+    const head = new Uint8Array(HEAD);
+    let size = 0; // bytes written so far
+    let buf = new Uint8Array(PIECE * 2), bufStart = HEAD, bufLen = 0; // not yet stored, starting at bufStart
+    let pieces = 0;
+    const store = async () => {
+      if (!bufLen) return;
+      await idb(tx("readwrite").put(new Blob([buf.slice(0, bufLen)]), pieces++));
+      bufStart += bufLen;
+      bufLen = 0;
+    };
+    const writable = new WritableStream<{ type: "write"; data: Uint8Array; position: number }>({
+      async write({ data, position }) {
+        let d = data, pos = position;
+        if (pos < HEAD) {
+          const n = Math.min(d.length, HEAD - pos);
+          head.set(d.subarray(0, n), pos);
+          d = d.subarray(n);
+          pos += n;
+        }
+        if (d.length) {
+          if (pos < bufStart) throw new Error("Export: unexpected rewrite of data already saved");
+          const at = pos - bufStart;
+          if (at + d.length > buf.length) {
+            const next = new Uint8Array(Math.max(buf.length * 2, at + d.length));
+            next.set(buf.subarray(0, bufLen));
+            buf = next;
+          }
+          buf.set(d, at);
+          bufLen = Math.max(bufLen, at + d.length);
+          if (bufLen >= PIECE) await store();
+        }
+        size = Math.max(size, position + data.length);
+      },
+      async close() { await store(); },
+    });
+    return {
+      target: new StreamTarget(writable),
+      file: async () => {
+        const parts: BlobPart[] = [head.slice(0, Math.min(HEAD, size))];
+        for (let i = 0; i < pieces; i++) parts.push(await idb(tx("readonly").get(i)) as Blob);
+        return new Blob(parts, { type: "video/mp4" });
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
 const AUDIO_PIECE = 10 * SR; // mix and hand over the sound ten seconds at a time
 
 /** Export to MP4 with WebCodecs, or WebM in real time when WebCodecs is missing. */
@@ -126,7 +196,11 @@ export async function exportVideo(job: ExportJob): Promise<{ blob: Blob; ext: "m
   if (!vCodec) return exportRealtime(job);
 
   const { canvas, paint } = makeFramePainter(job.timeline, job.theme, job.assets, job.format);
-  const disk = await diskTarget();
+  const want = job.storage;
+  let storage: ExportStorage = "memory";
+  let disk: { target: StreamTarget; file: () => Promise<Blob> } | null = !want || want === "disk" ? await diskTarget() : null;
+  if (disk) storage = "disk";
+  else if (!want || want === "database") { disk = await databaseTarget(); if (disk) storage = "database"; }
   const output = disk
     ? new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: disk.target })
     : new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
@@ -159,7 +233,7 @@ export async function exportVideo(job: ExportJob): Promise<{ blob: Blob; ext: "m
     await video.add(i / FPS, 1 / FPS);
     if (i % 5 === 0 || i === frames - 1) {
       const elapsed = (performance.now() - t0) / 1000;
-      job.onProgress({ frame: i + 1, frames, elapsed, eta: (elapsed / (i + 1)) * (frames - i - 1) });
+      job.onProgress({ frame: i + 1, frames, elapsed, eta: (elapsed / (i + 1)) * (frames - i - 1), storage });
     }
   }
   await addSound(totalSamples);

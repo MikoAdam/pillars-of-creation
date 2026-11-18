@@ -90,10 +90,13 @@ export function ExportDialog({ timeline, theme, assets, voice, music, onClose }:
               <div className="h-full bg-primary transition-[width]" style={{ width: `${(prog.frame / prog.frames) * 100}%` }} />
             </div>
             <div className="mt-1 flex justify-between font-mono text-[11px] text-muted-foreground">
-              <span>Frame {prog.frame} / {prog.frames}</span>
+              <span>Frame {prog.frame} / {prog.frames}{prog.storage === "memory" ? " · in memory" : ""}</span>
               <span>{result ? "Done" : `About ${fmt(prog.eta)} left`}</span>
             </div>
           </div>
+        )}
+        {prog?.storage === "memory" && (r1 - r0) > 300 && (
+          <p className="mb-3 text-xs text-destructive">This browser won't let the studio write the file to disk as it goes, so it is being built in memory. Videos longer than about five minutes can run out of memory here: export them in parts, or use Chrome or Edge.</p>
         )}
         {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
 
