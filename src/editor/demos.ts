@@ -69,7 +69,7 @@ say "Each wave brought new countries into the *single market*" at 960 540 beat 0
 wait 4s
 `,
     maps: {
-      [EU_MAP]: `map 52 15 zoom 2.6 as europe
+      [EU_MAP]: `map 52 15 zoom 2.2 as europe
 year "2004" highlight
 wait 1s
 
@@ -87,7 +87,7 @@ bubble 50.5 21 "2004: ten countries, about 74 million people" blue
 legend "2004" blue
 wait 4s
 
-fly 46 18 zoom 3.0 over 2s
+fly 46 18 zoom 2.6 over 2s
 year "2007" highlight
 country bulgaria green fade
 country romania green fade
@@ -95,14 +95,14 @@ bubble 43 25 "2007: Bulgaria and Romania" green
 legend "2007" green
 wait 4s
 
-fly 45 17 zoom 3.4 over 2s
+fly 45 17 zoom 3 over 2s
 year "2013" highlight
 country croatia orange fade
 bubble 45.5 15.9 "2013: Croatia, the 28th member" orange
 legend "2013" orange
 wait 4s
 
-fly 52 15 zoom 2.6 over 2.5s
+fly 52 15 zoom 2.2 over 2.5s
 wait 3s
 `,
     },

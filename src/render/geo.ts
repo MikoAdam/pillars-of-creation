@@ -267,6 +267,13 @@ export function featureAt(kind: GeoKind, x: number, y: number): GeoFeature | und
 }
 
 /** Map camera: centre (lat/lng), zoom (MapLibre-style, 512px tiles), tilt and turn in degrees. */
+
+/**
+ * The map tool's map is 1440 CSS px wide when it is opened from the studio, and the video frame is
+ * that view at 1920 px. So a zoom means the same stretch of the world in both, and everything drawn
+ * on the map (labels, bubbles, pins) is the tool's CSS size times this.
+ */
+export const VIEW_SCALE = 1920 / 1440;
 export interface MapCam { lat: number; lng: number; zoom: number; tilt: number; turn: number }
 
 const PERSPECTIVE = 1400;
@@ -274,7 +281,7 @@ const PERSPECTIVE = 1400;
 /** Projection for one camera. Returns screen coords in the 1920x1080 frame. */
 export function makeProjection(cam: MapCam) {
   const [cx, cy] = toNorm(cam.lng, cam.lat);
-  const size = 512 * Math.pow(2, cam.zoom);
+  const size = 512 * VIEW_SCALE * Math.pow(2, cam.zoom);
   const br = (-cam.turn * Math.PI) / 180;
   const cb = Math.cos(br), sb = Math.sin(br);
   const tp = (Math.min(70, Math.max(0, cam.tilt)) * Math.PI) / 180;
@@ -317,7 +324,8 @@ export type Projection = ReturnType<typeof makeProjection>;
 /** Camera that fits a normalised bbox inside the frame. */
 export function fitBbox(b: [number, number, number, number], pad = 0.18): { lat: number; lng: number; zoom: number } {
   const w = Math.max(1e-6, b[2] - b[0]), h = Math.max(1e-6, b[3] - b[1]);
-  const zoom = Math.log2(Math.min((1920 * (1 - pad)) / (w * 512), (1080 * (1 - pad)) / (h * 512)));
+  const k = 512 * VIEW_SCALE;
+  const zoom = Math.log2(Math.min((1920 * (1 - pad)) / (w * k), (1080 * (1 - pad)) / (h * k)));
   const [lng, lat] = fromNorm((b[0] + b[2]) / 2, (b[1] + b[3]) / 2);
   return { lat, lng, zoom: Math.max(0.5, Math.min(12, zoom)) };
 }

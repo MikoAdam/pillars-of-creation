@@ -1,7 +1,7 @@
 import type { Theme } from "../types";
 import { bodyFont, fillRound } from "../theme";
 import { wrapText } from "../text";
-import { geoFeatures, geoReady, makeProjection, toNorm, type GeoFeature, type MapCam, type Projection } from "../geo";
+import { geoFeatures, geoReady, makeProjection, toNorm, VIEW_SCALE, type GeoFeature, type MapCam, type Projection } from "../geo";
 import { drawSymbol, type SymbolName } from "../symbols";
 import { EFFECTS } from "../effectsSymbols";
 
@@ -34,7 +34,7 @@ const out = (t: number) => 1 - Math.pow(1 - t, 3);
  * The original app rendered overlays in CSS pixels of a ~1440px-wide window;
  * our frame is 1920px, so CSS px values scale by 1920/1440.
  */
-const S = 1920 / 1440;
+const S = VIEW_SCALE;
 
 /** Original "Minimal" basemap colours. */
 const OCEAN = "#c2d9ec";
@@ -452,7 +452,7 @@ function drawNativeLabels(
     if (!f) continue;
     renamed.add(f.name.toLowerCase());
     const [x, y] = r.at ? pr.point(r.at[0], r.at[1]) : pr.point(...f.center);
-    const fs = Math.max(base * 1.05, 18 * S);
+    const fs = 13 * S; // the map tool's renamed-label size
     ctx.font = bodyFont(theme, fs, 700);
     const tw = ctx.measureText(r.text).width;
     taken.push([x - tw / 2 - fs * 0.4, y - fs * 0.8, x + tw / 2 + fs * 0.4, y + fs * 0.8]);
@@ -479,8 +479,7 @@ function drawNativeLabels(
       const [x, y] = pr.point(...f.center);
       const edge = clamp01(Math.min(x - 30, 1890 - x, y - 24, 1056 - y) / 50);
       if (edge <= 0) continue;
-      // big countries: up to 1.35x the base size
-      const size = base * Math.min(1.35, Math.max(1, Math.sqrt(w * h) / (base * 18)));
+      const size = base; // one size for every country, as in the map tool
       ctx.font = bodyFont(theme, size, 500);
       try { (ctx as any).letterSpacing = `${(size * 0.08).toFixed(2)}px`; } catch { /* older canvas */ }
       const name = f.name.toUpperCase();
@@ -680,10 +679,10 @@ export function drawEffect(ctx: CanvasRenderingContext2D, sym: string, color: st
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /**
- * Callout cards (bubbles and pointer tags) are drawn this much larger than in the map tool:
- * the tool's 15px text is fine on an editor screen but too small in a video.
+ * Callout cards (bubbles and pointer tags) relative to the map tool's size. 1: the tool's map is
+ * the video frame, so they are drawn as they look there.
  */
-export const CARD_SCALE = 1.35;
+export const CARD_SCALE = 1;
 
 export function bubbleLayout(ctx: CanvasRenderingContext2D, theme: Theme, text: string, subtitle = false) {
   const font = 20, lh = 32, padX = 2 * 29, padY = 2 * 21;

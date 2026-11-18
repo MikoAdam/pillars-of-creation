@@ -237,3 +237,21 @@ describe("symbols", () => {
   });
 });
 
+
+describe("map-tool scripts in the video", () => {
+  it("start on the map tool's own view when they never set one", () => {
+    const maps: Record<string, string> = { Tool: 'rename: Germany, "West Germany", 50.8, 9.0\nfrance: blue, pulse\nbubble: "A caption", blue\nwait: 2s' };
+    const r = run('project "x"\ninclude map "Tool"', { resolveMap: (n) => maps[n] });
+    if (!r.ok) throw new Error(r.error.message);
+    const m = r.timeline.objects.find((o) => o.kind === "map")!;
+    expect(m.data.cam.pos.base).toEqual([48, 20]);
+    expect(m.data.cam.zoom.base).toEqual([3]);
+    expect(m.locked).toBe(true);
+  });
+  it("frame the same stretch of the world as the map tool's 1440 px map", () => {
+    // at zoom 3 the tool's map is 512 * 8 = 4096 CSS px around the world; the 1920 px frame shows 1440 of them
+    const pr = makeProjection({ lat: 0, lng: 0, zoom: 3, tilt: 0, turn: 0 });
+    const [x0] = pr.point(-180 * (1440 / 4096), 0);
+    expect(x0).toBeCloseTo(0, 0);
+  });
+});

@@ -526,6 +526,14 @@ zoom: Germany"></textarea>
     var embedded = window.parent !== window;
     if (embedded) {
         btn.style.display = 'none';
+        // The studio shows this page at a fixed 1820 x 868 and scales it to fit, so the map is
+        // always 1440 x 810: exactly the video frame. Keep the sidebar and the frame shape fixed.
+        var fix = document.createElement('style');
+        fix.textContent = '.sidebar{width:380px!important}.sidebar-resizer{display:none!important}';
+        document.head.appendChild(fix);
+        var ratio = document.getElementById('aspectRatio');
+        if (ratio) { ratio.value = '16:9'; ratio.readOnly = true; ratio.title = 'The video frame (fixed while editing from the studio)'; ratio.dispatchEvent(new Event('input')); }
+        window.dispatchEvent(new Event('resize'));
         if (window.app && typeof window.app.dismissWelcome === 'function') window.app.dismissWelcome();
         window.addEventListener('message', function (e) {
             if (e.source !== window.parent || e.origin !== window.location.origin || !e.data) return;
@@ -539,7 +547,7 @@ zoom: Germany"></textarea>
     }
     btn.addEventListener('click', function () {
         var code = document.getElementById('editor').value;
-        var header = 'project "Map" theme clean_modern\nmap 20 10 zoom 2\n\n';
+        var header = 'project "Map" theme clean_modern\n\n';
         try { localStorage.setItem('pnt:handoff', header + code); } catch (e) {}
         window.location.href = '/';
     });

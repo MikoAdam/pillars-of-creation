@@ -43,6 +43,8 @@ interface NumV { v: number; span?: Span }
 const MAX_ITER = 5000;
 const MAX_OBJECTS = 2000;
 const W = 1920, H = 1080;
+/** Where the classic map tool's map starts (renderer.js), for map-tool scripts that never set a view. */
+const MAP_TOOL_START = { lat: 48, lng: 20, zoom: 3 };
 
 /** Per-command keyword arity. Words not listed are positional. */
 const KW: Record<string, Record<string, number>> = {
@@ -786,6 +788,14 @@ export function interpret(src: string, opts: RunOptions = {}): Timeline {
   const nearOf = (s: Extract<Stmt, { kind: "cmd" }>) => ({ tok: s.nameTok });
 
   function needMap(s: Extract<Stmt, { kind: "cmd" }>): TObj {
+    // a map-tool script never says "map": the tool always shows one, starting at its default view
+    if (!curMap && s.legacy) {
+      curMap = makeObj("map", { pos: [], kw: {} }, s, cursor, [W / 2, H / 2], [0, 0, W, H], {
+        cam: { pos: track([MAP_TOOL_START.lat, MAP_TOOL_START.lng]), zoom: track([MAP_TOOL_START.zoom]), tilt: track([0]), turn: track([0]) },
+        camSpans: { pos: [], hasZoom: false, hasTilt: false, hasTurn: false },
+        fills: [], labels: true,
+      });
+    }
     if (!curMap) err(`Start a map first, for example: map 48 15 zoom 4`, nearOf(s));
     return curMap!;
   }

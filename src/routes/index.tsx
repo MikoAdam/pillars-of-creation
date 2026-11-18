@@ -599,12 +599,9 @@ function Studio() {
               <button onClick={() => setMapEdit(null)} className="rounded-md border border-border px-3 py-1 text-muted-foreground hover:text-foreground">Close</button>
             </div>
           </div>
-          <iframe
-            ref={mapFrame}
-            src="/map-tool/index.html?embed=1"
-            title="Map tool"
+          <MapToolFrame
+            frameRef={mapFrame}
             onLoad={() => mapFrame.current?.contentWindow?.postMessage({ type: "pnt-load-map", code: getMapCode(mapEdit.name) ?? "" }, window.location.origin)}
-            className="min-h-0 flex-1 border-0"
           />
         </div>
       )}
@@ -816,6 +813,39 @@ function Studio() {
         />
       </div>
     </main>
+  );
+}
+
+/** The map tool's page laid out at this size has a map of exactly 1440 x 810: its 380 px sidebar and 58 px header around it. */
+const TOOL_W = 1820, TOOL_H = 868;
+
+/**
+ * The map tool, laid out at a fixed size and scaled to fit, so its map is always the video frame
+ * (1440 x 810 CSS px, see VIEW_SCALE): what you frame there is what the video shows.
+ */
+function MapToolFrame({ frameRef, onLoad }: { frameRef: React.RefObject<HTMLIFrameElement | null>; onLoad: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [k, setK] = useState(1);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const fit = () => setK(Math.min(el.clientWidth / TOOL_W, el.clientHeight / TOOL_H));
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div ref={box} className="relative min-h-0 flex-1 overflow-hidden bg-[#0a0a12]">
+      <iframe
+        ref={frameRef}
+        src="/map-tool/index.html?embed=1"
+        title="Map tool"
+        onLoad={onLoad}
+        className="absolute left-1/2 top-0 border-0"
+        style={{ width: TOOL_W, height: TOOL_H, transform: `translateX(-50%) scale(${k})`, transformOrigin: "top center" }}
+      />
+    </div>
   );
 }
 

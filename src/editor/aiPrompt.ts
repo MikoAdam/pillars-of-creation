@@ -36,7 +36,7 @@ wait 4s
 /** A map scene. Needs the bundled country outlines; the test loads them. */
 export const EXAMPLE_MAP_SCRIPT = `project "Balkans, 1991" theme clean_modern
 
-map 44 18 zoom 5.2 as balkans
+map 44 18 zoom 4.8 as balkans
 year "1991"
 wait 1s
 
@@ -55,7 +55,7 @@ pin 45.35 19.0 battle red delay 1s
 legend "Croatia" blue
 wait 2.8s
 
-fly 44.1 19.2 zoom 6.6 over 2s
+fly 44.1 19.2 zoom 6.2 over 2s
 year "1995" highlight
 bubble 44.35 19.3 "Srebrenica, July 1995" red delay 0.4s
 wait 3.5s
@@ -139,9 +139,9 @@ Entrance and exit styles (enter X / exit X): fade pop rise drop slide_left slide
 Easing names (ease X): smooth linear in out snap overshoot spring bounce
 
 MAPS (only if the script is about places)
-map 44 18 zoom 5.2 as balkans          (lat lng, decimal degrees; optional: labels off)
+map 44 18 zoom 4.8 as balkans          (lat lng, decimal degrees; optional: labels off)
 map france                             (start on a country, auto-framed)
-fly 44.1 19.2 zoom 6.6 over 2s
+fly 44.1 19.2 zoom 6.2 over 2s
 country slovenia green pulse           (animations: pulse fade radial sweep none)
 region crimea ukraine red occupied     (region name, then its country)
 attack serbia croatia red bend 0.2 width 1.4     (arrow between two countries or "lat lng" places)
