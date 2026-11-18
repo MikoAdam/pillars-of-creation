@@ -1,5 +1,5 @@
 import {
-  Output, Mp4OutputFormat, BufferTarget, CanvasSource, AudioBufferSource, QUALITY_HIGH,
+  Output, Mp4OutputFormat, BufferTarget, StreamTarget, CanvasSource, AudioBufferSource, QUALITY_HIGH,
   getFirstEncodableVideoCodec, getFirstEncodableAudioCodec,
 } from "mediabunny";
 import type { Assets, Theme } from "@/render/types";
@@ -56,30 +56,67 @@ export function makeFramePainter(tl: Timeline, theme: Theme, assets: Assets, for
   return { canvas, paint };
 }
 
-/** Voiceover and music for the range, mixed to one stereo buffer; the music loops under the voice. */
-async function mixAudio(voice: Blob | undefined, music: { blob: Blob; volume: number } | undefined, from: number, to: number): Promise<AudioBuffer | null> {
+const SR = 48000;
+
+/**
+ * Voiceover and music, decoded once, mixed on demand for any stretch of the video (the music
+ * loops under the voice). Long videos are mixed piece by piece, so no full-length mix is held.
+ */
+async function audioMixer(voice: Blob | undefined, music: { blob: Blob; volume: number } | undefined) {
   if (!voice && !music) return null;
   const ac = new AudioContext();
   const dec = async (b: Blob) => ac.decodeAudioData(await b.arrayBuffer());
   const v = voice ? await dec(voice) : null;
   const m = music ? await dec(music.blob) : null;
   void ac.close();
-  const sr = 48000, len = Math.max(1, Math.round((to - from) * sr));
-  const off = new OfflineAudioContext(2, len, sr);
-  if (v) {
-    const s = off.createBufferSource();
-    s.buffer = v; s.connect(off.destination);
-    s.start(0, Math.min(from, v.duration));
-  }
-  if (m && music) {
-    const g = off.createGain();
-    g.gain.value = music.volume; g.connect(off.destination);
-    const s = off.createBufferSource();
-    s.buffer = m; s.loop = true; s.connect(g);
-    s.start(0, m.duration ? from % m.duration : 0);
-  }
-  return off.startRendering();
+  /** frames [s0, s1) of the output, counted in samples from time `from` */
+  return async (from: number, s0: number, s1: number): Promise<AudioBuffer> => {
+    const off = new OfflineAudioContext(2, Math.max(1, s1 - s0), SR);
+    const at = from + s0 / SR;
+    if (v && at < v.duration) {
+      const s = off.createBufferSource();
+      s.buffer = v; s.connect(off.destination);
+      s.start(0, at);
+    }
+    if (m && music && m.duration) {
+      const g = off.createGain();
+      g.gain.value = music.volume; g.connect(off.destination);
+      const s = off.createBufferSource();
+      s.buffer = m; s.loop = true; s.connect(g);
+      s.start(0, at % m.duration);
+    }
+    return off.startRendering();
+  };
 }
+
+/** The whole range mixed at once (the real-time fallback needs one buffer). */
+async function mixAudio(voice: Blob | undefined, music: { blob: Blob; volume: number } | undefined, from: number, to: number): Promise<AudioBuffer | null> {
+  const mix = await audioMixer(voice, music);
+  return mix ? mix(from, 0, Math.round((to - from) * SR)) : null;
+}
+
+/**
+ * Where the MP4 goes: a file in the browser's private storage, written as it is encoded, so a
+ * long video never has to fit in memory. Null where the browser can't write such files; the
+ * export then builds the file in memory, which is fine for shorter videos.
+ */
+async function diskTarget() {
+  try {
+    const root = await navigator.storage.getDirectory();
+    // earlier exports: their download has started or been abandoned by now
+    for await (const name of (root as unknown as { keys(): AsyncIterable<string> }).keys()) {
+      if (name.startsWith("export-")) await root.removeEntry(name).catch(() => {});
+    }
+    const handle = await root.getFileHandle(`export-${Date.now()}.mp4`, { create: true });
+    if (typeof handle.createWritable !== "function") return null;
+    const writable = await handle.createWritable();
+    return { target: new StreamTarget(writable, { chunked: true }), file: () => handle.getFile() };
+  } catch {
+    return null;
+  }
+}
+
+const AUDIO_PIECE = 10 * SR; // mix and hand over the sound ten seconds at a time
 
 /** Export to MP4 with WebCodecs, or WebM in real time when WebCodecs is missing. */
 export async function exportVideo(job: ExportJob): Promise<{ blob: Blob; ext: "mp4" | "webm" }> {
@@ -89,7 +126,10 @@ export async function exportVideo(job: ExportJob): Promise<{ blob: Blob; ext: "m
   if (!vCodec) return exportRealtime(job);
 
   const { canvas, paint } = makeFramePainter(job.timeline, job.theme, job.assets, job.format);
-  const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
+  const disk = await diskTarget();
+  const output = disk
+    ? new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: disk.target })
+    : new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
   const video = new CanvasSource(canvas, { codec: vCodec, bitrate: QUALITY_HIGH });
   output.addVideoTrack(video, { frameRate: FPS });
   let audio: AudioBufferSource | null = null;
@@ -99,9 +139,22 @@ export async function exportVideo(job: ExportJob): Promise<{ blob: Blob; ext: "m
   await output.start();
 
   const frames = frameCount(job.from, job.to);
+  // sound goes in alongside the pictures, a piece ahead, so the file is written as it goes
+  // (added only at the end, every encoded frame would wait in memory for it)
+  const mix = audio ? await audioMixer(job.voice, job.music) : null;
+  const totalSamples = Math.round((frames / FPS) * SR);
+  let mixed = 0;
+  const addSound = async (until: number) => {
+    while (audio && mix && mixed < Math.min(until, totalSamples)) {
+      const end = Math.min(mixed + AUDIO_PIECE, totalSamples);
+      await audio.add(await mix(job.from, mixed, end));
+      mixed = end;
+    }
+  };
   const t0 = performance.now();
   for (let i = 0; i < frames; i++) {
     if (job.signal.aborted) { await output.cancel(); throw new DOMException("Export cancelled", "AbortError"); }
+    await addSound(Math.round((i / FPS) * SR) + AUDIO_PIECE);
     paint(job.from + i / FPS);
     await video.add(i / FPS, 1 / FPS);
     if (i % 5 === 0 || i === frames - 1) {
@@ -109,9 +162,10 @@ export async function exportVideo(job: ExportJob): Promise<{ blob: Blob; ext: "m
       job.onProgress({ frame: i + 1, frames, elapsed, eta: (elapsed / (i + 1)) * (frames - i - 1) });
     }
   }
-  if (audio) { const mix = await mixAudio(job.voice, job.music, job.from, job.to); if (mix) await audio.add(mix); }
+  await addSound(totalSamples);
   await output.finalize();
-  return { blob: new Blob([output.target.buffer!], { type: "video/mp4" }), ext: "mp4" };
+  if (disk) return { blob: await disk.file(), ext: "mp4" };
+  return { blob: new Blob([(output.target as BufferTarget).buffer!], { type: "video/mp4" }), ext: "mp4" };
 }
 
 /** Fallback: record the canvas in real time with MediaRecorder (WebM). */
