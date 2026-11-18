@@ -358,6 +358,7 @@ export async function exportVideo(job: ExportJob): Promise<{ blob: Blob | null; 
     const eta = speed ? (frames - i) / speed : (elapsed / Math.max(1, i)) * (frames - i);
     job.onProgress({ frame: i, frames, elapsed, eta, storage, speed, bytes: bytes || undefined, paused: isPaused });
   };
+  let lastReport = 0;
   const cancel = async () => { await output.cancel(); throw new DOMException("Export cancelled", "AbortError"); };
   for (let i = 0; i < frames; i++) {
     if (job.signal.aborted) await cancel();
@@ -375,7 +376,8 @@ export async function exportVideo(job: ExportJob): Promise<{ blob: Blob | null; 
     await video.add(i / fps, 1 / fps);
     recent.push(performance.now());
     if (recent.length > 60) recent.shift();
-    if (i % 5 === 0 || i === frames - 1) report(i + 1);
+    // a few updates a second: each one redraws the dialog, which costs the export time
+    if (i === frames - 1 || performance.now() - lastReport > 250) { report(i + 1); lastReport = performance.now(); }
     // leave the computer room to breathe: rest about half as long as the frame took, or at least let the page update
     if (job.gentle) await sleep(Math.min(50, (performance.now() - f0) * 0.5));
     else if (i % 15 === 0) await sleep(0);

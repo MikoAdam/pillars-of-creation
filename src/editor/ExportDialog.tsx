@@ -143,7 +143,8 @@ export function ExportDialog({ timeline, theme, assets, voice, music, narration,
   const choice = (on: boolean) => `rounded-lg border p-2 text-left ${on ? "border-primary bg-secondary" : "border-border hover:bg-secondary"}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm" onClick={() => !busy && onClose()}>
+    // no backdrop blur: redrawn with every progress update, a full-screen blur competes with the export for the graphics chip
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/85" onClick={() => !busy && onClose()}>
       <div className="max-h-[92vh] w-[620px] overflow-y-auto rounded-xl border border-border bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="flex items-center gap-2 font-display text-lg font-semibold"><Film className="h-5 w-5" /> Export video</h2>
