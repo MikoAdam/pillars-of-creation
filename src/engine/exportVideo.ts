@@ -1,6 +1,6 @@
 import {
-  Output, Mp4OutputFormat, BufferTarget, StreamTarget, CanvasSource, AudioBufferSource, QUALITY_HIGH,
-  getFirstEncodableVideoCodec, getFirstEncodableAudioCodec,
+  Output, Mp4OutputFormat, BufferTarget, StreamTarget, CanvasSource, AudioBufferSource, Quality, QUALITY_HIGH,
+  canEncodeVideo, getFirstEncodableVideoCodec, getFirstEncodableAudioCodec, type VideoCodec,
 } from "mediabunny";
 import type { Assets, Theme } from "@/render/types";
 import { FPS, HEIGHT, WIDTH } from "@/render/types";
@@ -8,16 +8,30 @@ import type { Timeline } from "@/lang/timeline";
 import { drawSubtitle, renderTimeline, subtitleAt } from "./renderTimeline";
 import { getClip } from "@/editor/speech";
 
-export type ExportFormat = "1080p" | "4k" | "vertical";
+export type ExportFormat = "720p" | "1080p" | "1440p" | "4k" | "vertical" | "square";
 export const FORMAT_SIZE: Record<ExportFormat, [number, number]> = {
+  "720p": [1280, 720],
   "1080p": [1920, 1080],
+  "1440p": [2560, 1440],
   "4k": [3840, 2160],
   vertical: [1080, 1920],
+  square: [1080, 1080],
 };
 
-/** Where the file is being written: straight to disk, to the browser's database on disk, or to memory. */
-export type ExportStorage = "disk" | "database" | "memory";
-export interface ExportProgress { frame: number; frames: number; elapsed: number; eta: number; storage?: ExportStorage }
+export type CodecChoice = "avc" | "hevc" | "av1" | "vp9";
+export type QualityChoice = "draft" | "standard" | "best";
+
+/** Where the file is being written: straight to disk, to the browser's database on disk, to a file the user chose, or to memory. */
+export type ExportStorage = "disk" | "database" | "file" | "memory";
+export interface ExportProgress {
+  frame: number; frames: number; elapsed: number; eta: number;
+  storage?: ExportStorage | undefined;
+  /** frames per second over the last couple of seconds */
+  speed?: number | undefined;
+  /** bytes written so far, where it can be counted */
+  bytes?: number | undefined;
+  paused?: boolean | undefined;
+}
 export interface ExportJob {
   timeline: Timeline; theme: Theme; assets: Assets;
   format: ExportFormat; from: number; to: number;
@@ -29,22 +43,70 @@ export interface ExportJob {
   signal: AbortSignal;
   /** force a storage path (tests and diagnosis); normally the best one available is used */
   storage?: ExportStorage | undefined;
+  fps?: number | undefined;
+  quality?: QualityChoice | undefined;
+  codec?: CodecChoice | undefined;
+  /** burn the subtitle lines into the picture (default yes) */
+  subtitles?: boolean | undefined;
+  /** include the voice, machine voice and music (default yes) */
+  sound?: boolean | undefined;
+  /** pause between frames so the computer stays usable (a little slower) */
+  gentle?: boolean | undefined;
+  /** while this returns true the export waits */
+  isPaused?: (() => boolean) | undefined;
+  /** write straight into this file (in a folder the user picked) */
+  file?: FileSystemFileHandle | undefined;
 }
 
-/** Exact frame count for a range, at 30 fps. */
-export const frameCount = (from: number, to: number) => Math.max(1, Math.round((to - from) * FPS));
+/** Exact frame count for a range. */
+export const frameCount = (from: number, to: number, fps = FPS) => Math.max(1, Math.round((to - from) * fps));
+
+const BASE_BPS: Record<QualityChoice, number> = { draft: 4e6, standard: 8e6, best: 16e6 }; // H.264, 1080p, 30 fps
+const CODEC_EFFICIENCY: Record<CodecChoice, number> = { avc: 1, hevc: 0.65, vp9: 0.7, av1: 0.55 };
+
+/** Video bitrate for the choices: the H.264 1080p rate, scaled by pixels, frame rate and codec. */
+export function videoBitrate(format: ExportFormat, fps: number, quality: QualityChoice, codec: CodecChoice) {
+  const [w, h] = FORMAT_SIZE[format];
+  return Math.round(BASE_BPS[quality] * Math.pow((w * h) / (1920 * 1080), 0.85) * Math.pow(fps / 30, 0.7) * CODEC_EFFICIENCY[codec]);
+}
+
+/** About how big the file will be, in bytes. */
+export const estimateBytes = (seconds: number, format: ExportFormat, fps: number, quality: QualityChoice, codec: CodecChoice, sound: boolean) =>
+  (seconds * (videoBitrate(format, fps, quality, codec) + (sound ? 192_000 : 0))) / 8;
+
+/** Which codecs this browser can encode at this size. */
+export async function encodableCodecs(format: ExportFormat): Promise<CodecChoice[]> {
+  if (typeof VideoEncoder === "undefined") return [];
+  const [width, height] = FORMAT_SIZE[format];
+  const all: CodecChoice[] = ["avc", "hevc", "av1", "vp9"];
+  const ok = await Promise.all(all.map((c) => canEncodeVideo(c as VideoCodec, { width, height }).catch(() => false)));
+  return all.filter((_, i) => ok[i]);
+}
+
+/** Subtitle lines of a stretch of the video as an .srt file (times from the start of the stretch). */
+export function toSrt(tl: Timeline, from: number, to: number) {
+  const ts = (s: number) => {
+    const ms = Math.max(0, Math.round(s * 1000));
+    const p = (n: number, d = 2) => String(n).padStart(d, "0");
+    return `${p(Math.floor(ms / 3600000))}:${p(Math.floor(ms / 60000) % 60)}:${p(Math.floor(ms / 1000) % 60)},${p(ms % 1000, 3)}`;
+  };
+  return (tl.subs ?? [])
+    .filter((s) => s.t1 > from && s.t0 < to)
+    .map((s, i) => `${i + 1}\n${ts(Math.max(s.t0, from) - from)} --> ${ts(Math.min(s.t1, to) - from)}\n${s.text}\n`)
+    .join("\n");
+}
 
 /** Draws one output frame. Uses the same renderTimeline as the preview. */
-export function makeFramePainter(tl: Timeline, theme: Theme, assets: Assets, format: ExportFormat) {
+export function makeFramePainter(tl: Timeline, theme: Theme, assets: Assets, format: ExportFormat, subtitles = true) {
   const [w, h] = FORMAT_SIZE[format];
   const canvas = document.createElement("canvas");
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext("2d")!;
   let src: HTMLCanvasElement | null = null;
-  if (format === "vertical") { src = document.createElement("canvas"); src.width = WIDTH; src.height = HEIGHT; }
+  if (format === "vertical" || format === "square") { src = document.createElement("canvas"); src.width = WIDTH; src.height = HEIGHT; }
   const paint = (t: number) => {
-    if (!src) return renderTimeline(ctx, tl, theme, assets, t, undefined, { scale: w / WIDTH, final: true });
-    // vertical: 16:9 frame in the middle over a soft blurred copy, subtitles underneath
+    if (!src) return renderTimeline(ctx, tl, theme, assets, t, undefined, { scale: w / WIDTH, final: true, subtitles });
+    // vertical and square: the 16:9 frame in the middle over a soft blurred copy, subtitles underneath
     renderTimeline(src.getContext("2d")!, tl, theme, assets, t, undefined, { subtitles: false, final: true });
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = theme.colors.background;
@@ -57,8 +119,8 @@ export function makeFramePainter(tl: Timeline, theme: Theme, assets: Assets, for
     ctx.restore();
     const fh = (w * HEIGHT) / WIDTH, fy = (h - fh) / 2;
     ctx.drawImage(src, 0, fy, w, fh);
-    const sub = subtitleAt(tl, t);
-    if (sub) drawSubtitle(ctx, theme, sub, w / 2, fy + fh + 260, w - 120, 52);
+    const sub = subtitles ? subtitleAt(tl, t) : undefined;
+    if (sub) drawSubtitle(ctx, theme, sub, w / 2, Math.min(h - 40, fy + fh + (format === "vertical" ? 260 : 150)), w - 120, format === "vertical" ? 52 : 44);
   };
   return { canvas, paint };
 }
@@ -121,20 +183,31 @@ async function mixAudio(voice: Blob | undefined, music: { blob: Blob; volume: nu
  * long video never has to fit in memory. Null where the browser can't write such files; the
  * export then builds the file in memory, which is fine for shorter videos.
  */
-async function diskTarget() {
+async function diskTarget(session: string, count: (n: number) => void) {
   try {
     const root = await navigator.storage.getDirectory();
-    // earlier exports: their download has started or been abandoned by now
+    // earlier exports: their download has started or been abandoned by now (this export's earlier parts stay)
     for await (const name of (root as unknown as { keys(): AsyncIterable<string> }).keys()) {
-      if (name.startsWith("export-")) await root.removeEntry(name).catch(() => {});
+      if (name.startsWith("export-") && !name.startsWith(`export-${session}-`)) await root.removeEntry(name).catch(() => {});
     }
-    const handle = await root.getFileHandle(`export-${Date.now()}.mp4`, { create: true });
+    const handle = await root.getFileHandle(`export-${session}-${Date.now()}.mp4`, { create: true });
     if (typeof handle.createWritable !== "function") return null;
-    const writable = await handle.createWritable();
-    return { target: new StreamTarget(writable, { chunked: true }), file: () => handle.getFile() };
+    return { target: new StreamTarget(counting(await handle.createWritable(), count), { chunked: true }), file: () => handle.getFile() };
   } catch {
     return null;
   }
+}
+
+type Chunk = { type: "write"; data: Uint8Array; position: number };
+/** The writable, passing every write on and reporting how far the file has grown. */
+function counting(dest: WritableStream<Chunk>, count: (n: number) => void) {
+  const w = dest.getWriter();
+  let size = 0;
+  return new WritableStream<Chunk>({
+    async write(c) { await w.write(c); size = Math.max(size, c.position + c.data.length); count(size); },
+    close: () => w.close(),
+    abort: (r) => w.abort(r),
+  });
 }
 
 /**
@@ -147,7 +220,7 @@ const DB = "pnt-export", STORE = "pieces", PIECE = 8 << 20, HEAD = 1 << 20;
 function idb<T>(req: IDBRequest<T>) {
   return new Promise<T>((res, rej) => { req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error); });
 }
-async function databaseTarget() {
+async function databaseTarget(count: (n: number) => void) {
   if (typeof indexedDB === "undefined") return null;
   try {
     const open = indexedDB.open(DB, 1);
@@ -187,6 +260,7 @@ async function databaseTarget() {
           if (bufLen >= PIECE) await store();
         }
         size = Math.max(size, position + data.length);
+        count(size);
       },
       async close() { await store(); },
     });
@@ -205,35 +279,67 @@ async function databaseTarget() {
 
 const AUDIO_PIECE = 10 * SR; // mix and hand over the sound ten seconds at a time
 
+/**
+ * A pause that keeps time while the tab is in the background. Page timers are slowed to about one
+ * a second there, which would stall the export; a worker's timers are not.
+ */
+let timer: Worker | null = null;
+let ticket = 0;
+const waking = new Map<number, () => void>();
+function sleep(ms: number) {
+  if (typeof Worker === "undefined") return new Promise<void>((r) => setTimeout(r, ms));
+  if (!timer) {
+    timer = new Worker(URL.createObjectURL(new Blob(["onmessage=(e)=>setTimeout(()=>postMessage(e.data[0]),e.data[1])"], { type: "text/javascript" })));
+    timer.onmessage = (e) => { waking.get(e.data)?.(); waking.delete(e.data); };
+  }
+  const id = ++ticket;
+  return new Promise<void>((r) => { waking.set(id, r); timer!.postMessage([id, ms]); });
+}
+/** Names this browser session's export files, so a multi-part export keeps its earlier parts. */
+const SESSION = Math.random().toString(36).slice(2, 8);
+
 /** Export to MP4 with WebCodecs, or WebM in real time when WebCodecs is missing. */
-export async function exportVideo(job: ExportJob): Promise<{ blob: Blob; ext: "mp4" | "webm" }> {
+export async function exportVideo(job: ExportJob): Promise<{ blob: Blob | null; ext: "mp4" | "webm"; bytes: number }> {
   const [w, h] = FORMAT_SIZE[job.format];
+  const fps = job.fps ?? FPS;
+  const quality = job.quality ?? "standard";
   const hasWebCodecs = typeof VideoEncoder !== "undefined";
-  const vCodec = hasWebCodecs ? await getFirstEncodableVideoCodec(new Mp4OutputFormat().getSupportedVideoCodecs(), { width: w, height: h }) : null;
+  const wanted = job.codec ? [job.codec as VideoCodec] : [];
+  const vCodec = hasWebCodecs ? await getFirstEncodableVideoCodec([...wanted, ...new Mp4OutputFormat().getSupportedVideoCodecs()], { width: w, height: h }) : null;
   if (!vCodec) return exportRealtime(job);
 
-  const { canvas, paint } = makeFramePainter(job.timeline, job.theme, job.assets, job.format);
+  const { canvas, paint } = makeFramePainter(job.timeline, job.theme, job.assets, job.format, job.subtitles !== false);
+  let bytes = 0;
+  const count = (n: number) => { bytes = n; };
   const want = job.storage;
   let storage: ExportStorage = "memory";
-  let disk: { target: StreamTarget; file: () => Promise<Blob> } | null = !want || want === "disk" ? await diskTarget() : null;
-  if (disk) storage = "disk";
-  else if (!want || want === "database") { disk = await databaseTarget(); if (disk) storage = "database"; }
+  let disk: { target: StreamTarget; file: () => Promise<Blob> } | null = null;
+  if (job.file) {
+    disk = { target: new StreamTarget(counting(await job.file.createWritable(), count), { chunked: true }), file: async () => new Blob() };
+    storage = "file";
+  }
+  if (!disk && (!want || want === "disk")) { disk = await diskTarget(SESSION, count); if (disk) storage = "disk"; }
+  if (!disk && (!want || want === "database")) { disk = await databaseTarget(count); if (disk) storage = "database"; }
   const output = disk
     ? new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: disk.target })
     : new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
-  const video = new CanvasSource(canvas, { codec: vCodec, bitrate: QUALITY_HIGH });
-  output.addVideoTrack(video, { frameRate: FPS });
+  const video = new CanvasSource(canvas, {
+    codec: vCodec,
+    quality: new Quality({ bitrate: videoBitrate(job.format, fps, quality, vCodec as CodecChoice) }),
+    keyFrameInterval: 2,
+  });
+  output.addVideoTrack(video, { frameRate: fps });
   let audio: AudioBufferSource | null = null;
-  const wantAudio = !!(job.voice || job.music || job.narration?.length);
+  const wantAudio = job.sound !== false && !!(job.voice || job.music || job.narration?.length);
   const aCodec = wantAudio ? await getFirstEncodableAudioCodec(new Mp4OutputFormat().getSupportedAudioCodecs()) : null;
   if (wantAudio && aCodec) { audio = new AudioBufferSource({ codec: aCodec, bitrate: QUALITY_HIGH }); output.addAudioTrack(audio); }
   await output.start();
 
-  const frames = frameCount(job.from, job.to);
+  const frames = frameCount(job.from, job.to, fps);
   // sound goes in alongside the pictures, a piece ahead, so the file is written as it goes
   // (added only at the end, every encoded frame would wait in memory for it)
   const mix = audio ? await audioMixer(job.voice, job.music, job.narration) : null;
-  const totalSamples = Math.round((frames / FPS) * SR);
+  const totalSamples = Math.round((frames / fps) * SR);
   let mixed = 0;
   const addSound = async (until: number) => {
     while (audio && mix && mixed < Math.min(until, totalSamples)) {
@@ -243,28 +349,51 @@ export async function exportVideo(job: ExportJob): Promise<{ blob: Blob; ext: "m
     }
   };
   const t0 = performance.now();
+  let paused = 0; // seconds spent paused, left out of the time estimates
+  const recent: number[] = []; // when the last frames finished, for the speed
+  const report = (i: number, isPaused = false) => {
+    const elapsed = (performance.now() - t0) / 1000 - paused;
+    const span = recent.length > 1 ? (recent[recent.length - 1] - recent[0]) / 1000 : 0;
+    const speed = span > 0 ? (recent.length - 1) / span : undefined;
+    const eta = speed ? (frames - i) / speed : (elapsed / Math.max(1, i)) * (frames - i);
+    job.onProgress({ frame: i, frames, elapsed, eta, storage, speed, bytes: bytes || undefined, paused: isPaused });
+  };
+  const cancel = async () => { await output.cancel(); throw new DOMException("Export cancelled", "AbortError"); };
   for (let i = 0; i < frames; i++) {
-    if (job.signal.aborted) { await output.cancel(); throw new DOMException("Export cancelled", "AbortError"); }
-    await addSound(Math.round((i / FPS) * SR) + AUDIO_PIECE);
-    paint(job.from + i / FPS);
-    await video.add(i / FPS, 1 / FPS);
-    if (i % 5 === 0 || i === frames - 1) {
-      const elapsed = (performance.now() - t0) / 1000;
-      job.onProgress({ frame: i + 1, frames, elapsed, eta: (elapsed / (i + 1)) * (frames - i - 1), storage });
+    if (job.signal.aborted) await cancel();
+    if (job.isPaused?.()) {
+      const p0 = performance.now();
+      report(i, true);
+      while (job.isPaused() && !job.signal.aborted) await sleep(200);
+      paused += (performance.now() - p0) / 1000;
+      recent.length = 0;
+      if (job.signal.aborted) await cancel();
     }
+    const f0 = performance.now();
+    await addSound(Math.round((i / fps) * SR) + AUDIO_PIECE);
+    paint(job.from + i / fps);
+    await video.add(i / fps, 1 / fps);
+    recent.push(performance.now());
+    if (recent.length > 60) recent.shift();
+    if (i % 5 === 0 || i === frames - 1) report(i + 1);
+    // leave the computer room to breathe: rest about half as long as the frame took, or at least let the page update
+    if (job.gentle) await sleep(Math.min(50, (performance.now() - f0) * 0.5));
+    else if (i % 15 === 0) await sleep(0);
   }
   await addSound(totalSamples);
   await output.finalize();
-  if (disk) return { blob: await disk.file(), ext: "mp4" };
-  return { blob: new Blob([(output.target as BufferTarget).buffer!], { type: "video/mp4" }), ext: "mp4" };
+  if (storage === "file") return { blob: null, ext: "mp4", bytes };
+  if (disk) { const blob = await disk.file(); return { blob, ext: "mp4", bytes: blob.size }; }
+  const blob = new Blob([(output.target as BufferTarget).buffer!], { type: "video/mp4" });
+  return { blob, ext: "mp4", bytes: blob.size };
 }
 
 /** Fallback: record the canvas in real time with MediaRecorder (WebM). */
-async function exportRealtime(job: ExportJob): Promise<{ blob: Blob; ext: "webm" }> {
-  const { canvas, paint } = makeFramePainter(job.timeline, job.theme, job.assets, job.format);
-  const stream = canvas.captureStream(FPS);
+async function exportRealtime(job: ExportJob): Promise<{ blob: Blob; ext: "webm"; bytes: number }> {
+  const { canvas, paint } = makeFramePainter(job.timeline, job.theme, job.assets, job.format, job.subtitles !== false);
+  const stream = canvas.captureStream(job.fps ?? FPS);
   let ac: AudioContext | null = null;
-  const mix = await mixAudio(job.voice, job.music, job.from, job.to, job.narration);
+  const mix = job.sound === false ? null : await mixAudio(job.voice, job.music, job.from, job.to, job.narration);
   if (mix) {
     ac = new AudioContext();
     const dest = ac.createMediaStreamDestination();
@@ -293,7 +422,8 @@ async function exportRealtime(job: ExportJob): Promise<{ blob: Blob; ext: "webm"
   await done;
   void ac?.close();
   if (job.signal.aborted) throw new DOMException("Export cancelled", "AbortError");
-  return { blob: new Blob(parts, { type: "video/webm" }), ext: "webm" };
+  const blob = new Blob(parts, { type: "video/webm" });
+  return { blob, ext: "webm", bytes: blob.size };
 }
 
 export function downloadBlob(blob: Blob, filename: string) {

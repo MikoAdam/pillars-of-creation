@@ -18,8 +18,13 @@ Nothing is uploaded anywhere. No accounts, no server, no paid services.
    the knob to rotate. Each action writes the same command you could have typed, and your
    comments and formatting survive. Or edit the script on the right directly: it follows the
    playhead and highlights the block that is running.
-4. **Export** to MP4 (1080p, 4K or vertical for Shorts and Reels) with the voiceover and music
-   mixed in. A WebM recording is used where WebCodecs is unavailable.
+4. **Export** to MP4 with the voice and music mixed in: 720p, 1080p, 1440p, 4K, vertical (Shorts,
+   Reels, TikTok) or square; 24, 25, 30 or 60 fps; draft, standard or best quality; H.264, HEVC,
+   AV1 or VP9 where the browser can encode them; subtitles in the picture or as an `.srt`
+   file. The file downloads by itself when it is ready, or (Chrome, Edge) is written straight
+   into a folder you choose. Long videos can be split into parts that are saved one by one, and
+   **Keep the computer responsive** rests between frames so the machine stays usable during a
+   long export; it can be paused. A WebM recording is used where WebCodecs is unavailable.
 
 `Save` writes the script, its maps and your photos to one `.pillars.json` file (also `Ctrl+S`);
 `Open` loads one.
