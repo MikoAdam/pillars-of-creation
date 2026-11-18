@@ -77,7 +77,7 @@ HOW THE USER WORKS
 1. Start with Examples or write in the Script panel on the right. The rail on the left holds Add (cards, text, charts, narration, source quotes, credits, shapes), Assets (pictures and the icon library), Motion (entrances, exits, emphasis, transitions, camera moves), Audio and Maps: click an item to add it at the playhead or drag it onto the preview. The drawing tools sit above the preview. Play, Restart and the timeline let you review the result.
 2. Upload pictures in Assets and refer to their exact @asset names. Do not assume a picture, logo or audio file exists unless the user has uploaded it. The three built-in photos are listed below.
 3. In the Maps panel, New map opens the dedicated map creator. Name and save the map, then choose Save and add to video. The video includes it with include map "Map name". Included map objects are locked in the video; reopen the map creator to change them. Its Help describes its separate classic map grammar; the MAPS section below is the studio's grammar, not a promise that it can be pasted unchanged into the classic map editor.
-4. narrate lines are read aloud in the preview by the browser's built-in voice as a placeholder, so the timing can be judged before anything is recorded (it is not in the exported file). In Audio, Copy the narration gives the text to record; upload the recording as Narration and local Whisper speech recognition produces editable subtitle lines. Add Music separately for a looping background track. Review automatic transcripts for mistakes.
+4. narrate lines are voiced by a free machine voice made on the user's computer (Make the machine voice in the Audio panel, a one-time model download): it is heard in the preview and in the exported video, and the script is timed to it. Until it is made, the browser's own voice reads the lines in the preview only. In Audio, Copy the narration gives the text to record for a real voiceover; upload the recording as Narration and local Whisper speech recognition produces editable subtitle lines. Add Music separately for a looping background track. Review automatic transcripts for mistakes.
 5. Use Save/Open for project files. Audio is stored separately in the browser and is not bundled in the project file. Export offers 1080p, 4K, vertical and a time range; MP4 is used when supported, with a WebM fallback.
 6. To use an external LLM, paste this explanation into its chat and describe the desired video. Copy its script, choose Paste from AI in the studio, check the validation result, then load it. On script errors, the last valid preview remains visible.
 
@@ -156,11 +156,11 @@ legend auto
 remove last | arrows | pins | labels | colors | effects | lines | legend | year | all
 
 NARRATION (write it: it sets the pace of the video)
-narrator speed 1 lang "en-US"                  (optional, before the first narrate: speed 0.8 to 1.3; lang picks the browser voice; add the word subtitles to also show each line as a subtitle)
+narrator voice "M1" speed 1                     (optional, before the first narrate: machine voices F1 to F5 and M1 to M5 (the machine voice speaks English); speed 0.8 to 1.3; add the word subtitles to also show each line as a subtitle)
 narrate "One or two short sentences the narrator says."
 narrate "Spoken while the next visuals start, without holding them up." nowait
 - When you write a video script, write its narration as narrate lines, unless the user says they already have a recording.
-- The script waits on each narrate line until it has been said (about 155 words a minute), then goes on. Put the visuals for a sentence on the lines just before its narrate line: they appear as it starts and stay while it is spoken. Add a short wait after a line when the picture should hold a moment longer.
+- The script waits on each narrate line until it has been said (timed to the machine voice, or about 155 words a minute before it is made), then goes on. Put the visuals for a sentence on the lines just before its narrate line: they appear as it starts and stay while it is spoken. Add a short wait after a line when the picture should hold a moment longer.
 - Write for the ear: short sentences, one idea per line, numbers as people say them.
 
 QUOTING SOURCES (attribute every time; quote little)

@@ -110,12 +110,16 @@ own at `/map-tool/index.html`.
 
 ## Audio
 
-- **Placeholder voice:** write the narration as `narrate "..."` lines. The script waits on each
-  line for as long as it takes to say (about 155 words a minute; `narrator speed 1.1` changes the
-  pace), and the browser's built-in voice reads it aloud in the preview, so the timing can be
-  judged before anything is recorded. It is a free system voice and is not in the exported file
-  (browsers don't let a page record it); `narrator subtitles` shows the lines as subtitles
-  instead. **Copy the narration** in the Audio panel gives the text to record.
+- **Machine voice:** write the narration as `narrate "..."` lines. **Make the machine voice** in
+  the Audio panel voices them with [Supertonic](https://huggingface.co/Supertone/supertonic), an
+  open English text-to-speech model (code MIT, model OpenRAIL) that runs on this computer: about
+  260 MB to download once, then about half a second per line, each line made once and kept in
+  the browser. The voice is in the preview and in the exported video, and the script is timed to
+  it: each `narrate` line waits until it has been said. `narrator voice "F2" speed 1.1` picks
+  one of ten voices (F1 to F5, M1 to M5) and the pace; `narrator subtitles` also shows the
+  lines as subtitles. Until the clips exist, the browser's own voice reads the lines in the
+  preview (it can't be recorded). **Copy the narration** gives the text to record a real
+  voiceover, which then replaces the machine voice.
 - **Narration:** upload a recording and it becomes the voiceover. Subtitles are written into the
   script automatically by an open-source speech model (Whisper) running in a web worker; the audio
   never leaves the machine.

@@ -6,6 +6,7 @@ import type { Assets, Theme } from "@/render/types";
 import { FPS, HEIGHT, WIDTH } from "@/render/types";
 import type { Timeline } from "@/lang/timeline";
 import { drawSubtitle, renderTimeline, subtitleAt } from "./renderTimeline";
+import { getClip } from "@/editor/speech";
 
 export type ExportFormat = "1080p" | "4k" | "vertical";
 export const FORMAT_SIZE: Record<ExportFormat, [number, number]> = {
@@ -22,6 +23,8 @@ export interface ExportJob {
   format: ExportFormat; from: number; to: number;
   voice?: Blob | undefined;
   music?: { blob: Blob; volume: number } | undefined;
+  /** machine-voice clips for narrate lines, placed at their times */
+  narration?: Narrated[] | undefined;
   onProgress: (p: ExportProgress) => void;
   signal: AbortSignal;
   /** force a storage path (tests and diagnosis); normally the best one available is used */
@@ -62,12 +65,14 @@ export function makeFramePainter(tl: Timeline, theme: Theme, assets: Assets, for
 
 const SR = 48000;
 
+type Narrated = { t0: number; dur: number; key: string };
+
 /**
  * Voiceover and music, decoded once, mixed on demand for any stretch of the video (the music
  * loops under the voice). Long videos are mixed piece by piece, so no full-length mix is held.
  */
-async function audioMixer(voice: Blob | undefined, music: { blob: Blob; volume: number } | undefined) {
-  if (!voice && !music) return null;
+async function audioMixer(voice: Blob | undefined, music: { blob: Blob; volume: number } | undefined, narration: Narrated[] = []) {
+  if (!voice && !music && !narration.length) return null;
   const ac = new AudioContext();
   const dec = async (b: Blob) => ac.decodeAudioData(await b.arrayBuffer());
   const v = voice ? await dec(voice) : null;
@@ -82,6 +87,18 @@ async function audioMixer(voice: Blob | undefined, music: { blob: Blob; volume: 
       s.buffer = v; s.connect(off.destination);
       s.start(0, at);
     }
+    // machine-voice lines that sound in this stretch
+    const end = from + s1 / SR;
+    for (const n of narration) {
+      if (n.t0 >= end || n.t0 + n.dur <= at) continue;
+      const c = await getClip(n.key);
+      if (!c) continue;
+      const b = off.createBuffer(1, c.pcm.length, c.sr);
+      b.copyToChannel(c.pcm as Float32Array<ArrayBuffer>, 0);
+      const s = off.createBufferSource();
+      s.buffer = b; s.connect(off.destination);
+      s.start(Math.max(0, n.t0 - at), Math.max(0, at - n.t0));
+    }
     if (m && music && m.duration) {
       const g = off.createGain();
       g.gain.value = music.volume; g.connect(off.destination);
@@ -94,8 +111,8 @@ async function audioMixer(voice: Blob | undefined, music: { blob: Blob; volume: 
 }
 
 /** The whole range mixed at once (the real-time fallback needs one buffer). */
-async function mixAudio(voice: Blob | undefined, music: { blob: Blob; volume: number } | undefined, from: number, to: number): Promise<AudioBuffer | null> {
-  const mix = await audioMixer(voice, music);
+async function mixAudio(voice: Blob | undefined, music: { blob: Blob; volume: number } | undefined, from: number, to: number, narration?: Narrated[]): Promise<AudioBuffer | null> {
+  const mix = await audioMixer(voice, music, narration);
   return mix ? mix(from, 0, Math.round((to - from) * SR)) : null;
 }
 
@@ -207,7 +224,7 @@ export async function exportVideo(job: ExportJob): Promise<{ blob: Blob; ext: "m
   const video = new CanvasSource(canvas, { codec: vCodec, bitrate: QUALITY_HIGH });
   output.addVideoTrack(video, { frameRate: FPS });
   let audio: AudioBufferSource | null = null;
-  const wantAudio = !!(job.voice || job.music);
+  const wantAudio = !!(job.voice || job.music || job.narration?.length);
   const aCodec = wantAudio ? await getFirstEncodableAudioCodec(new Mp4OutputFormat().getSupportedAudioCodecs()) : null;
   if (wantAudio && aCodec) { audio = new AudioBufferSource({ codec: aCodec, bitrate: QUALITY_HIGH }); output.addAudioTrack(audio); }
   await output.start();
@@ -215,7 +232,7 @@ export async function exportVideo(job: ExportJob): Promise<{ blob: Blob; ext: "m
   const frames = frameCount(job.from, job.to);
   // sound goes in alongside the pictures, a piece ahead, so the file is written as it goes
   // (added only at the end, every encoded frame would wait in memory for it)
-  const mix = audio ? await audioMixer(job.voice, job.music) : null;
+  const mix = audio ? await audioMixer(job.voice, job.music, job.narration) : null;
   const totalSamples = Math.round((frames / FPS) * SR);
   let mixed = 0;
   const addSound = async (until: number) => {
@@ -247,7 +264,7 @@ async function exportRealtime(job: ExportJob): Promise<{ blob: Blob; ext: "webm"
   const { canvas, paint } = makeFramePainter(job.timeline, job.theme, job.assets, job.format);
   const stream = canvas.captureStream(FPS);
   let ac: AudioContext | null = null;
-  const mix = await mixAudio(job.voice, job.music, job.from, job.to);
+  const mix = await mixAudio(job.voice, job.music, job.from, job.to, job.narration);
   if (mix) {
     ac = new AudioContext();
     const dest = ac.createMediaStreamDestination();

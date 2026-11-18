@@ -138,7 +138,7 @@ export interface Timeline {
   /** timed subtitle lines, absolute seconds */
   subs?: { t0: number; t1: number; text: string; line: number }[];
   /** placeholder narration: what the browser's built-in voice says, and when */
-  narration?: { t0: number; t1: number; text: string; line: number }[];
+  narration?: { t0: number; t1: number; text: string; line: number; key: string; clip: boolean }[];
   /** placeholder voice settings (`narrator`) */
   narrator?: { speed: number; voice: string; lang: string; subtitles: boolean };
   /** every source the script names (`cite` and `source`), in order */

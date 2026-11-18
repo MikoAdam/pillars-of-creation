@@ -14,6 +14,8 @@ import { insertAtTime, removeFx, resetStyle, setStyle, writeFx, writeMove, write
 import { Inspector, MapLocked } from "@/editor/Library";
 import { SidePanel, type PanelId } from "@/editor/SidePanel";
 import { PlaceholderVoice } from "@/editor/narrator";
+import { loadSpeechIndex, makeClips, MACHINE_VOICE_FLAG, type SpeechProgress } from "@/editor/speech";
+import { machineVoice } from "@/lang/narration";
 import { getMapCode, listMaps, saveMap, uniqueMapName } from "@/editor/mapStore";
 import { PasteScript } from "@/editor/PasteScript";
 import { applyStyle, getTheme, THEMES } from "@/render/theme";
@@ -76,6 +78,11 @@ function Studio() {
   const [assets, setAssets] = useState<Assets>(new Map());
   const assetsRef = useRef(assets);
   assetsRef.current = assets;
+  /** lengths of the machine-voice clips made so far: narrate lines are timed to them */
+  const [speech, setSpeech] = useState<Map<string, number>>(new Map());
+  const speechRef = useRef(speech);
+  speechRef.current = speech;
+  useEffect(() => { void loadSpeechIndex().then(setSpeech); }, []);
   const [notice, setNotice] = useState<string | null>(null);
   const loaded = useRef(false);
   /** set right before a hand-driven code change, so the next run() happens on the next tick
@@ -126,7 +133,7 @@ function Studio() {
     const delay = runImmediate.current ? 0 : 300;
     const id = setTimeout(() => {
       runImmediate.current = false;
-      const r = run(code, { resolveMap: getMapCode, assetSize: (n) => { const img = assetsRef.current.get("@" + n); return img?.naturalWidth ? [img.naturalWidth, img.naturalHeight] : undefined; } });
+      const r = run(code, { resolveMap: getMapCode, speechLength: (k) => speechRef.current.get(k), assetSize: (n) => { const img = assetsRef.current.get("@" + n); return img?.naturalWidth ? [img.naturalWidth, img.naturalHeight] : undefined; } });
       if (r.ok) {
         setTimeline(r.timeline); setError(null);
         // map outlines load once in the background, then the script runs again
@@ -148,7 +155,7 @@ function Studio() {
       }
     }, 300);
     return () => clearTimeout(id);
-  }, [code, geoVersion, mapsVersion, assets.size]);
+  }, [code, geoVersion, mapsVersion, assets.size, speech]);
   const [promptCopied, setPromptCopied] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const projectInput = useRef<HTMLInputElement>(null);
@@ -246,9 +253,57 @@ function Studio() {
     placeholder.current ??= new PlaceholderVoice();
     const pv = placeholder.current;
     if (voice) pv.stop();
-    else pv.update(timeline.narration ?? [], t, playing, timeline.narrator);
+    else pv.update(timeline.narration ?? [], t, playing, timeline.narrator, () => tRef.current);
   }, [t, playing, timeline, voice]);
   useEffect(() => () => placeholder.current?.stop(), []);
+  // machine voice: clips for narrate lines, made in the browser. The first time needs the user's go-ahead
+  // (a large one-time download); after that, new and changed lines are voiced on their own.
+  const [voiceOn, setVoiceOn] = useState(false);
+  useEffect(() => { try { setVoiceOn(localStorage.getItem(MACHINE_VOICE_FLAG) === "on"); } catch { /* private mode */ } }, []);
+  const [speechProg, setSpeechProg] = useState<(SpeechProgress & { error?: string }) | null>(null);
+  const making = useRef(false);
+  const missingClips = useMemo(() => {
+    const seen = new Set<string>();
+    return (timeline.narration ?? []).filter((n) => !n.clip && !seen.has(n.key) && (seen.add(n.key), true));
+  }, [timeline]);
+  const makeVoice = useCallback(async () => {
+    if (making.current || !missingClips.length) return;
+    making.current = true;
+    try { localStorage.setItem(MACHINE_VOICE_FLAG, "on"); } catch { /* private mode */ }
+    setVoiceOn(true);
+    const speed = timeline.narrator?.speed ?? 1, v = machineVoice(timeline.narrator?.voice);
+    try {
+      await makeClips(
+        missingClips.map((n) => ({ key: n.key, text: n.text, voice: v, speed })),
+        (key, secs) => setSpeech((m) => new Map(m).set(key, secs)),
+        setSpeechProg,
+        () => false,
+      );
+      setSpeechProg(null);
+    } catch (e) {
+      setSpeechProg({ done: 0, total: 0, error: `The machine voice failed: ${(e as Error).message}` });
+    } finally {
+      making.current = false;
+    }
+  }, [missingClips, timeline]);
+  useEffect(() => {
+    if (!voiceOn || voice || !missingClips.length) return;
+    const id = setTimeout(() => void makeVoice(), 1500);
+    return () => clearTimeout(id);
+  }, [voiceOn, voice, missingClips, makeVoice]);
+  const setNarratorVoice = (name: string) => {
+    const c = hist.codeRef.current;
+    const line = /^narrator\b[^\n]*/m.exec(c);
+    if (line) {
+      // change the voice on the existing narrator line, or add it before any comment
+      const old = line[0];
+      const now = /\svoice\s+"[^"]*"/.test(old)
+        ? old.replace(/(\svoice\s+)"[^"]*"/, `$1"${name}"`)
+        : old.replace(/^([^#]*?)(\s*#.*)?$/, `$1 voice "${name}"$2`);
+      hand(c.slice(0, line.index) + now + c.slice(line.index + old.length));
+    } else if (/^project\b[^\n]*\n/m.test(c)) hand(c.replace(/^(project\b[^\n]*\n)/m, `$1narrator voice "${name}"\n`));
+    else hand(`narrator voice "${name}"\n${c}`);
+  };
   const copyNarration = async () => {
     const text = (timeline.narration ?? []).map((l) => l.text.replace(/\*/g, "")).join("\n\n");
     try { await navigator.clipboard.writeText(text); setNotice("Narration copied: read it aloud, record it, and upload the recording as Narration."); }
@@ -516,7 +571,9 @@ function Studio() {
       )}
       {voice && <audio ref={audioRef} src={voice.url} preload="auto" hidden />}
       {music && <audio ref={musicRef} src={music.url} preload="auto" loop hidden />}
-      {exporting && <ExportDialog timeline={timeline} theme={theme} assets={assets} voice={voice?.blob} music={music && timeline.music ? { blob: music.blob, volume: timeline.music.volume } : undefined} onClose={() => setExporting(false)} />}
+      {exporting && <ExportDialog timeline={timeline} theme={theme} assets={assets} voice={voice?.blob} music={music && timeline.music ? { blob: music.blob, volume: timeline.music.volume } : undefined}
+        narration={voice ? undefined : (timeline.narration ?? []).filter((n) => n.clip).map((n) => ({ t0: n.t0, dur: n.t1 - n.t0, key: n.key }))}
+        onClose={() => setExporting(false)} />}
       {pasteOpen && (
         <PasteScript
           resolveMap={getMapCode}
@@ -628,8 +685,9 @@ function Studio() {
               onUse={(n) => hand(useVoice(n))}
               onSubtitles={makeSubtitles}
               onRemove={(n) => { setVoices((v) => v.filter((x) => x.name !== n)); void deleteAudio(n); }}
-              narration={timeline.narration?.length ? { lines: timeline.narration.length, seconds: timeline.narration.reduce((a, l) => a + l.t1 - l.t0, 0) } : undefined}
+              narration={timeline.narration?.length ? { lines: timeline.narration.length, seconds: timeline.narration.reduce((a, l) => a + l.t1 - l.t0, 0), voiced: timeline.narration.filter((l) => l.clip).length } : undefined}
               onCopyNarration={() => void copyNarration()}
+              machine={{ on: voiceOn, voice: machineVoice(timeline.narrator?.voice), progress: speechProg, onMake: () => void makeVoice(), onVoice: setNarratorVoice }}
             />
           }
         />

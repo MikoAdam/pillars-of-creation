@@ -19,3 +19,15 @@ export function speechSeconds(text: string, speed = 1): number {
 
 /** Pause after each narrated line before the next one starts. */
 export const NARRATION_GAP = 0.25;
+
+/** The machine voices (Supertonic): five female and five male. */
+export const MACHINE_VOICES = ["F1", "F2", "F3", "F4", "F5", "M1", "M2", "M3", "M4", "M5"] as const;
+
+/** The machine voice a `narrator voice` setting picks; any other name is a browser voice, and the machine voice stays M1. */
+export const machineVoice = (name?: string) => {
+  const v = (name ?? "").toUpperCase();
+  return (MACHINE_VOICES as readonly string[]).includes(v) ? v : "M1";
+};
+
+/** What a narrated line sounds like: the words (without *emphasis* marks), the voice and the pace. Identifies its clip. */
+export const speechKey = (text: string, voice: string, speed: number) => `${voice}|${speed.toFixed(2)}|${text.replace(/\*/g, "").trim()}`;

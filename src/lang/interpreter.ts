@@ -5,7 +5,7 @@ import { CSS_COLOR_NAMES, MAP_COLORS, MAP_COLOR_NAMES, findCountry, findRegion, 
 import { EFFECTS, type EffectName } from "@/render/effectsSymbols";
 import { SYMBOLS, type SymbolName } from "@/render/symbols";
 import { CARD_SCALE, type MapFill } from "@/render/scenes/map";
-import { NARRATION_GAP, speechSeconds } from "./narration";
+import { NARRATION_GAP, machineVoice, speechKey, speechSeconds } from "./narration";
 import { addSeg, emptyCamera, sample, EASES, EASE_NAMES, FX_STYLES, type FxStyle, type ObjKind, type Seg, type TObj, type Timeline, type Track, type Trans } from "./timeline";
 
 export const THEME_NAMES: Record<string, string> = {
@@ -30,6 +30,8 @@ export interface RunOptions {
   resolveMap?: (name: string) => string | undefined;
   /** pixel size of an uploaded image, when it has loaded: gives `image` its true shape */
   assetSize?: (name: string) => [number, number] | undefined;
+  /** length in seconds of a narrated line's machine-voice clip, when it has been made (see speechKey) */
+  speechLength?: (key: string) => number | undefined;
 }
 
 export type RunResult =
@@ -508,10 +510,14 @@ export function interpret(src: string, opts: RunOptions = {}): Timeline {
           if (a.kind === "word" && a.name === "nowait") wait = false;
           else err('Only "nowait" can follow the words of narrate', a);
         }
-        const d = speechSeconds(text, tl.narrator?.speed ?? 1);
+        // timed to its machine-voice clip once that exists, otherwise to an estimate of how long it takes to say
+        const speed = tl.narrator?.speed ?? 1;
+        const key = speechKey(text, machineVoice(tl.narrator?.voice), speed);
+        const clip = opts.speechLength?.(key);
+        const d = clip ?? speechSeconds(text, speed);
         const o = makeObj("narration", p, s, start, [W / 2, H / 2], [-10, -10, 0, 0], { text });
         o.end = start + d;
-        (tl.narration ??= []).push({ t0: start, t1: start + d, text, line: s.line });
+        (tl.narration ??= []).push({ t0: start, t1: start + d, text, line: s.line, key, clip: clip !== undefined });
         if (tl.narrator?.subtitles) (tl.subs ??= []).push({ t0: start, t1: start + d, text: text.replace(/\*/g, ""), line: s.line });
         if (wait) cursor = Math.max(cursor, start + d + NARRATION_GAP);
         bump(start + d + (wait ? NARRATION_GAP : 0));

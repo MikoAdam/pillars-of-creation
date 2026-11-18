@@ -26,7 +26,7 @@ credits "Script" "Jane Doe"
 icon tank at 960 540 size 240 color red as armour enter pop
 icon radar
 image @logo at 1600 160 size 300
-narrator speed 1.1 lang "en-US" subtitles
+narrator voice "F2" speed 1.1 lang "en-US" subtitles
 narrate "One or two short sentences the narrator says."
 narrate "Spoken without holding things up." nowait
 cite "The exact words, one or two sentences." from "Title of the article" by "Publisher" date "12 March 2024" url https://example.org/article

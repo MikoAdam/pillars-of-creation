@@ -1,4 +1,5 @@
 import type { Timeline } from "@/lang/timeline";
+import { getClip } from "./speech";
 
 type Line = NonNullable<Timeline["narration"]>[number];
 type Settings = Timeline["narrator"];
@@ -19,14 +20,15 @@ function pickVoice(s: Settings): SpeechSynthesisVoice | undefined {
 }
 
 /**
- * Placeholder narration: speaks the script's `narrate` lines with the browser's built-in voice
- * while the preview plays, so the timing can be judged before a real voiceover exists. The
- * script's timing comes from `speechSeconds`; the voice's speed is fitted to it line by line.
- * It is heard in the preview only: browsers do not let a page record this voice.
+ * Placeholder narration in the preview. A line with a machine-voice clip plays that clip (the
+ * same sound the export carries); a line without one is spoken by the browser's built-in voice,
+ * which is instant but can't be recorded, its speed fitted line by line to the script's timing.
  */
 export class PlaceholderVoice {
   private spoken = -1;
   private lastT = 0;
+  private ac: AudioContext | null = null;
+  private src: AudioBufferSourceNode | null = null;
   /** learned correction: how much faster this voice must speak to match the script's timing */
   private fit = 1;
 
@@ -34,17 +36,48 @@ export class PlaceholderVoice {
     return typeof window !== "undefined" && "speechSynthesis" in window;
   }
 
-  update(lines: Line[], t: number, playing: boolean, settings: Settings) {
-    if (!PlaceholderVoice.available()) return;
+  /** `now` reads the playhead when a clip has loaded, so it starts in step with the picture */
+  update(lines: Line[], t: number, playing: boolean, settings: Settings, now: () => number) {
     if (!playing) { this.stop(); this.lastT = t; return; }
     if (t < this.lastT - 0.1) { this.stop(); } // jumped back: lines may be said again
     this.lastT = t;
     const i = lines.findIndex((l) => t >= l.t0 && t < l.t1);
     if (i < 0 || i === this.spoken) return;
     this.spoken = i;
+    const line = lines[i];
+    if (line.clip) {
+      this.stopSound();
+      void this.play(line, i, now);
+      const next = lines[i + 1];
+      if (next?.clip) void getClip(next.key); // have the next one ready
+      return;
+    }
+    if (!PlaceholderVoice.available()) return;
     // only start a line near its beginning, so scrubbing into the middle of one stays quiet
-    if (t - lines[i].t0 > 0.4) { speechSynthesis.cancel(); return; }
-    this.say(lines[i], settings);
+    if (t - line.t0 > 0.4) { speechSynthesis.cancel(); return; }
+    this.say(line, settings);
+  }
+
+  private async play(line: Line, i: number, now: () => number) {
+    const c = await getClip(line.key);
+    if (!c || this.spoken !== i) return;
+    this.ac ??= new AudioContext();
+    if (this.ac.state === "suspended") await this.ac.resume().catch(() => {});
+    const offset = now() - line.t0;
+    const buf = this.ac.createBuffer(1, c.pcm.length, c.sr);
+    buf.copyToChannel(c.pcm as Float32Array<ArrayBuffer>, 0);
+    if (offset >= buf.duration || this.spoken !== i) return;
+    const src = this.ac.createBufferSource();
+    src.buffer = buf;
+    src.connect(this.ac.destination);
+    src.start(0, Math.max(0, offset));
+    this.src = src;
+  }
+
+  private stopSound() {
+    try { this.src?.stop(); } catch { /* already ended */ }
+    this.src = null;
+    if (PlaceholderVoice.available()) speechSynthesis.cancel();
   }
 
   private say(line: Line, s: Settings) {
@@ -65,6 +98,6 @@ export class PlaceholderVoice {
 
   stop() {
     this.spoken = -1;
-    if (PlaceholderVoice.available()) speechSynthesis.cancel();
+    this.stopSound();
   }
 }
